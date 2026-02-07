@@ -658,7 +658,7 @@ impl App {
                     let member_id =
                         self.team_data.teams[self.current_team].members[slot].pokemon_id;
                     // Open move picker for existing member
-                    let detail_matches = self.detail.as_ref().map_or(false, |d| d.id == member_id);
+                    let detail_matches = self.detail.as_ref().is_some_and(|d| d.id == member_id);
                     if detail_matches {
                         let detail = self.detail.clone().unwrap();
                         self.modal = Some(Modal::MovePicker);
@@ -713,12 +713,9 @@ impl App {
     }
 
     fn handle_modal_key(&mut self, key: KeyEvent, modal: Modal) {
-        match key.code {
-            KeyCode::Esc => {
-                self.modal = None;
-                return;
-            }
-            _ => {}
+        if key.code == KeyCode::Esc {
+            self.modal = None;
+            return;
         }
 
         match modal {

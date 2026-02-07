@@ -54,8 +54,7 @@ impl ApiClient {
     pub(crate) fn url_to_cache_key(url: &str) -> String {
         url.replace("https://", "")
             .replace("http://", "")
-            .replace('/', "_")
-            .replace('?', "_")
+            .replace(['/', '?'], "_")
     }
 
     #[cfg(test)]

@@ -101,9 +101,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 .fg(type_color(type_name))
                 .add_modifier(Modifier::BOLD),
         )];
-        for c in start_col..(start_col + visible_cols).min(18) {
-            let val = matrix[r][c];
-            let (text, color) = match val {
+        for val in &matrix[r][start_col..(start_col + visible_cols).min(18)] {
+            let (text, color) = match *val {
                 v if v >= 2.0 => ("2×", Color::Rgb(80, 220, 80)),
                 v if v <= 0.0 => ("0", Color::Rgb(80, 80, 80)),
                 v if v < 1.0 => ("½×", Color::Rgb(220, 80, 80)),
