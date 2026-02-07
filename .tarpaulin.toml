@@ -1,3 +1,4 @@
+[general]
 # Minimum coverage threshold
 line_threshold = 80.0
 branch_threshold = 80.0

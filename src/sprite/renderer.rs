@@ -195,5 +195,7 @@ mod tests {
         // (height is made even, so 1 pixel becomes 2, which creates 1 row)
         assert!(!widget.cells.is_empty());
         assert_eq!(widget.cells.len(), 1);
+        // Verify the cell contains actual data (not empty)
+        assert!(!widget.cells[0].is_empty());
     }
 }

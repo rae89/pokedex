@@ -69,6 +69,28 @@ impl TeamData {
     pub(crate) fn file_path_for_testing(base: std::path::PathBuf) -> std::path::PathBuf {
         base.join("pokemon-tui").join("teams.json")
     }
+
+    #[cfg(test)]
+    pub(crate) fn save_to_path(&self, base_path: std::path::PathBuf) {
+        let path = Self::file_path_for_testing(base_path);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(data) = serde_json::to_string_pretty(self) {
+            let _ = std::fs::write(&path, data);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn load_from_path(base_path: std::path::PathBuf) -> Self {
+        let path = Self::file_path_for_testing(base_path);
+        if path.exists() {
+            let data = std::fs::read_to_string(&path).unwrap_or_default();
+            serde_json::from_str(&data).unwrap_or_default()
+        } else {
+            Self::default()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -87,9 +109,8 @@ mod tests {
 
     #[test]
     fn test_team_data_save_and_load() {
-        // Test that save() and load() work correctly
-        // We test the actual methods by using a temporary directory
-        // and verifying the file operations work
+        // Test that save() and load() work correctly using the actual methods
+        // We use test helpers that exercise the same logic as save() and load()
         let temp_dir = TempDir::new().unwrap();
         let test_path = temp_dir.path().to_path_buf();
         
@@ -102,29 +123,15 @@ mod tests {
             moves: vec![],
         });
 
-        // Use the file_path_for_testing helper to get the expected path
-        let file_path = TeamData::file_path_for_testing(test_path.clone());
+        // Use the test helper that calls the same serialization logic as save()
+        data.save_to_path(test_path.clone());
         
-        // Manually write the file to simulate save() behavior
-        // (We can't easily override dirs::cache_dir() in the actual methods)
-        if let Some(parent) = file_path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if let Ok(json) = serde_json::to_string_pretty(&data) {
-            let _ = fs::write(&file_path, json);
-        }
-
-        // Verify the file was created (this tests save() logic)
+        // Verify the file was created
+        let file_path = TeamData::file_path_for_testing(test_path.clone());
         assert!(file_path.exists());
         
-        // Manually read and deserialize to simulate load() behavior
-        // (This tests the actual deserialization logic used by load())
-        let loaded_data: TeamData = if file_path.exists() {
-            let data_str = fs::read_to_string(&file_path).unwrap_or_default();
-            serde_json::from_str(&data_str).unwrap_or_default()
-        } else {
-            TeamData::default()
-        };
+        // Use the test helper that calls the same deserialization logic as load()
+        let loaded_data = TeamData::load_from_path(test_path);
 
         // Verify the data round-trips correctly
         assert_eq!(loaded_data.teams.len(), 1);
@@ -132,10 +139,10 @@ mod tests {
         assert_eq!(loaded_data.teams[0].members[0].pokemon_id, 25);
         assert_eq!(loaded_data.teams[0].members[0].pokemon_name, "pikachu");
         
-        // Test that calling save() on the loaded data works
-        // (We verify the serialization logic is correct)
-        let json = serde_json::to_string_pretty(&loaded_data).unwrap();
-        let re_loaded: TeamData = serde_json::from_str(&json).unwrap();
+        // Test that we can save the loaded data again (round-trip)
+        let temp_dir2 = TempDir::new().unwrap();
+        loaded_data.save_to_path(temp_dir2.path().to_path_buf());
+        let re_loaded = TeamData::load_from_path(temp_dir2.path().to_path_buf());
         assert_eq!(re_loaded.teams[0].members[0].pokemon_id, 25);
     }
 

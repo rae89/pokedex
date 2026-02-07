@@ -154,6 +154,38 @@ impl App {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_with_team_data(tx: mpsc::UnboundedSender<AppEvent>, team_data: TeamData) -> Self {
+        Self {
+            running: true,
+            screen: Screen::PokemonList,
+            pokemon_list: Vec::new(),
+            list_state: 0,
+            list_loading: LoadingState::Idle,
+            search_mode: false,
+            search_query: String::new(),
+            generation_filter: None,
+            detail: None,
+            detail_loading: LoadingState::Idle,
+            sprite_bytes: None,
+            detail_pokemon_id: None,
+            type_infos: Vec::new(),
+            type_chart_loading: LoadingState::Idle,
+            type_chart_scroll_x: 0,
+            type_chart_scroll_y: 0,
+            team_data,
+            current_team: 0,
+            team_slot_selected: 0,
+            modal: None,
+            modal_selected: 0,
+            modal_search: String::new(),
+            available_moves: Vec::new(),
+            moves_loading: LoadingState::Idle,
+            error_message: None,
+            tx,
+        }
+    }
+
     pub fn filtered_list(&self) -> Vec<&PokemonSummary> {
         let mut filtered: Vec<&PokemonSummary> = self.pokemon_list.iter().collect();
 
@@ -973,7 +1005,9 @@ mod tests {
     #[test]
     fn test_app_current_team() {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let app = App::new(tx);
+        // Use test helper to avoid reading from real cache file
+        let team_data = TeamData::default();
+        let app = App::new_with_team_data(tx, team_data);
         
         let team = app.current_team();
         assert_eq!(team.name, "Team 1");

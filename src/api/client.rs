@@ -142,12 +142,16 @@ mod tests {
     #[test]
     fn test_new_creates_cache_dir() {
         // Test that ApiClient::new() creates the cache directory
-        // We can't easily test the exact path (it uses dirs::cache_dir()),
-        // but we can verify the constructor works and doesn't panic
-        let client = ApiClient::new();
-        // The cache_dir should exist after construction
-        // Since we can't access the private field, we test indirectly
-        // by verifying the client can be created successfully
-        drop(client); // Just verify it constructs without panicking
+        // We use a temporary directory to verify the directory creation logic
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().join("api");
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
+        
+        // Verify the cache directory was created
+        assert!(cache_dir.exists());
+        assert!(cache_dir.is_dir());
+        
+        // Verify the client can be used (indirectly tests that new() would work similarly)
+        drop(client);
     }
 }
