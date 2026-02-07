@@ -13,6 +13,7 @@ pub enum AppEvent {
     Tick,
     // API responses
     PokemonListLoaded(Vec<PokemonSummary>),
+    PokemonTypesUpdated(Vec<(u32, Vec<String>)>), // batch of (id, types)
     PokemonDetailLoaded(Box<PokemonDetail>),
     SpriteLoaded(u32, Vec<u8>), // pokemon_id, png bytes
     TypesLoaded(Vec<TypeInfo>),

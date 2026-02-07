@@ -8,7 +8,7 @@ const BASE_URL: &str = "https://pokeapi.co/api/v2";
 
 impl ApiClient {
     pub async fn fetch_pokemon_list(&self) -> Result<PokemonListResponse> {
-        let url = format!("{}/pokemon?limit=151", BASE_URL);
+        let url = format!("{}/pokemon?limit=10000", BASE_URL);
         self.get_cached(&url).await
     }
 

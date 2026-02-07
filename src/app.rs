@@ -7,6 +7,14 @@ use crate::models::pokemon::{MoveDetail, PokemonDetail, PokemonSummary};
 use crate::models::team::{Team, TeamData, TeamMember, TeamMove};
 use crate::models::type_data::TypeInfo;
 
+fn extract_id_from_url(url: &str) -> Option<u32> {
+    url.trim_end_matches('/')
+        .rsplit('/')
+        .next()?
+        .parse()
+        .ok()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Screen {
     PokemonList,
@@ -158,47 +166,57 @@ impl App {
             let client = std::sync::Arc::new(ApiClient::new());
             match client.fetch_pokemon_list().await {
                 Ok(list) => {
-                    let entries: Vec<(u32, String)> = list
+                    // Extract ID from URL: "https://pokeapi.co/api/v2/pokemon/25/" -> 25
+                    let summaries: Vec<PokemonSummary> = list
                         .results
                         .iter()
-                        .enumerate()
-                        .map(|(i, e)| ((i + 1) as u32, e.name.clone()))
+                        .filter_map(|e| {
+                            let id = extract_id_from_url(&e.url)?;
+                            Some(PokemonSummary {
+                                id,
+                                name: e.name.clone(),
+                                types: Vec::new(),
+                            })
+                        })
                         .collect();
 
-                    // Fetch details concurrently in batches of 20
-                    let mut summaries = Vec::with_capacity(entries.len());
-                    for chunk in entries.chunks(20) {
+                    // Send list immediately (no types yet)
+                    let _ = tx.send(AppEvent::PokemonListLoaded(summaries.clone()));
+
+                    // Background-fetch types in batches of 30
+                    let entries: Vec<(u32, String)> = summaries
+                        .iter()
+                        .map(|s| (s.id, s.name.clone()))
+                        .collect();
+
+                    for chunk in entries.chunks(30) {
                         let mut handles = Vec::new();
-                        for &(id, ref name) in chunk {
+                        for &(id, ref _name) in chunk {
                             let client = client.clone();
-                            let name = name.clone();
                             handles.push(tokio::spawn(async move {
                                 match client.fetch_pokemon_detail(&id.to_string()).await {
-                                    Ok(detail) => PokemonSummary {
+                                    Ok(detail) => Some((
                                         id,
-                                        name,
-                                        types: detail
+                                        detail
                                             .types
                                             .iter()
                                             .map(|t| t.type_info.name.clone())
-                                            .collect(),
-                                    },
-                                    Err(_) => PokemonSummary {
-                                        id,
-                                        name,
-                                        types: Vec::new(),
-                                    },
+                                            .collect::<Vec<String>>(),
+                                    )),
+                                    Err(_) => None,
                                 }
                             }));
                         }
+                        let mut batch = Vec::new();
                         for handle in handles {
-                            if let Ok(summary) = handle.await {
-                                summaries.push(summary);
+                            if let Ok(Some(result)) = handle.await {
+                                batch.push(result);
                             }
                         }
+                        if !batch.is_empty() {
+                            let _ = tx.send(AppEvent::PokemonTypesUpdated(batch));
+                        }
                     }
-                    summaries.sort_by_key(|s| s.id);
-                    let _ = tx.send(AppEvent::PokemonListLoaded(summaries));
                 }
                 Err(e) => {
                     let _ = tx.send(AppEvent::ApiError(format!("Failed to load Pokémon list: {}", e)));
@@ -302,6 +320,13 @@ impl App {
             AppEvent::PokemonListLoaded(list) => {
                 self.pokemon_list = list;
                 self.list_loading = LoadingState::Loaded;
+            }
+            AppEvent::PokemonTypesUpdated(batch) => {
+                for (id, types) in batch {
+                    if let Some(p) = self.pokemon_list.iter_mut().find(|p| p.id == id) {
+                        p.types = types;
+                    }
+                }
             }
             AppEvent::PokemonDetailLoaded(detail) => {
                 self.detail = Some(detail);
