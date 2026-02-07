@@ -45,6 +45,21 @@ lipo -create target/release/pokedex target/x86_64-apple-darwin/release/pokedex -
 
 The resulting `pokedex` binary works on both Apple Silicon and Intel Macs.
 
+## Testing
+
+Run the unit test suite:
+
+```bash
+cargo test
+```
+
+Generate code coverage report:
+
+```bash
+cargo install cargo-tarpaulin
+cargo tarpaulin --out Html --output-dir coverage/
+```
+
 ## Controls
 
 | Key | Action |

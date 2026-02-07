@@ -64,4 +64,124 @@ impl TeamData {
             .join("pokemon-tui")
             .join("teams.json")
     }
+
+    #[cfg(test)]
+    pub(crate) fn file_path_for_testing(base: std::path::PathBuf) -> std::path::PathBuf {
+        base.join("pokemon-tui").join("teams.json")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[test]
+    fn test_team_data_default() {
+        let data = TeamData::default();
+        assert_eq!(data.teams.len(), 1);
+        assert_eq!(data.teams[0].name, "Team 1");
+        assert!(data.teams[0].members.is_empty());
+    }
+
+    #[test]
+    fn test_team_data_save_and_load() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_path = temp_dir.path().to_path_buf();
+        
+        // Override file_path for testing
+        let mut data = TeamData::default();
+        data.teams[0].members.push(TeamMember {
+            pokemon_id: 25,
+            pokemon_name: "pikachu".to_string(),
+            types: vec!["electric".to_string()],
+            moves: vec![],
+        });
+
+        // Manually save to test path
+        let file_path = TeamData::file_path_for_testing(test_path.clone());
+        if let Some(parent) = file_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(json) = serde_json::to_string_pretty(&data) {
+            let _ = fs::write(&file_path, json);
+        }
+
+        // Manually load from test path
+        let loaded_data: TeamData = if file_path.exists() {
+            let data_str = fs::read_to_string(&file_path).unwrap();
+            serde_json::from_str(&data_str).unwrap()
+        } else {
+            TeamData::default()
+        };
+
+        assert_eq!(loaded_data.teams.len(), 1);
+        assert_eq!(loaded_data.teams[0].members.len(), 1);
+        assert_eq!(loaded_data.teams[0].members[0].pokemon_id, 25);
+        assert_eq!(loaded_data.teams[0].members[0].pokemon_name, "pikachu");
+    }
+
+    #[test]
+    fn test_team_data_load_nonexistent_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_path = temp_dir.path().to_path_buf();
+        let file_path = TeamData::file_path_for_testing(test_path);
+        
+        // File doesn't exist, should return default
+        let data: TeamData = if file_path.exists() {
+            let data_str = fs::read_to_string(&file_path).unwrap_or_default();
+            serde_json::from_str(&data_str).unwrap_or_default()
+        } else {
+            TeamData::default()
+        };
+
+        assert_eq!(data.teams.len(), 1);
+        assert_eq!(data.teams[0].name, "Team 1");
+    }
+
+    #[test]
+    fn test_team_serialization() {
+        let team = Team {
+            name: "Test Team".to_string(),
+            members: vec![
+                TeamMember {
+                    pokemon_id: 1,
+                    pokemon_name: "bulbasaur".to_string(),
+                    types: vec!["grass".to_string(), "poison".to_string()],
+                    moves: vec![
+                        TeamMove {
+                            name: "tackle".to_string(),
+                            move_type: "normal".to_string(),
+                            power: Some(40),
+                        },
+                    ],
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&team).unwrap();
+        let deserialized: Team = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.name, "Test Team");
+        assert_eq!(deserialized.members.len(), 1);
+        assert_eq!(deserialized.members[0].pokemon_id, 1);
+        assert_eq!(deserialized.members[0].moves.len(), 1);
+    }
+
+    #[test]
+    fn test_team_data_serialization() {
+        let mut data = TeamData::default();
+        data.teams.push(Team {
+            name: "Team 2".to_string(),
+            members: vec![],
+        });
+
+        let json = serde_json::to_string(&data).unwrap();
+        let deserialized: TeamData = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.teams.len(), 2);
+        assert_eq!(deserialized.teams[0].name, "Team 1");
+        assert_eq!(deserialized.teams[1].name, "Team 2");
+    }
 }

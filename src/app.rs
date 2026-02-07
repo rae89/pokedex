@@ -7,7 +7,7 @@ use crate::models::pokemon::{MoveDetail, PokemonDetail, PokemonSummary};
 use crate::models::team::{Team, TeamData, TeamMember, TeamMove};
 use crate::models::type_data::TypeInfo;
 
-fn extract_id_from_url(url: &str) -> Option<u32> {
+pub(crate) fn extract_id_from_url(url: &str) -> Option<u32> {
     url.trim_end_matches('/')
         .rsplit('/')
         .next()?
@@ -16,7 +16,7 @@ fn extract_id_from_url(url: &str) -> Option<u32> {
 }
 
 /// Calculate Pokemon generation from ID based on standard ranges
-fn pokemon_generation(id: u32) -> u8 {
+pub(crate) fn pokemon_generation(id: u32) -> u8 {
     match id {
         1..=151 => 1,
         152..=251 => 2,
@@ -768,5 +768,247 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+
+    #[test]
+    fn test_extract_id_from_url() {
+        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/25/"), Some(25));
+        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/1"), Some(1));
+        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/151/"), Some(151));
+        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/999/"), Some(999));
+        assert_eq!(extract_id_from_url("invalid"), None);
+        assert_eq!(extract_id_from_url(""), None);
+        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/"), None);
+    }
+
+    #[test]
+    fn test_pokemon_generation() {
+        // Generation 1
+        assert_eq!(pokemon_generation(1), 1);
+        assert_eq!(pokemon_generation(151), 1);
+        
+        // Generation 2
+        assert_eq!(pokemon_generation(152), 2);
+        assert_eq!(pokemon_generation(251), 2);
+        
+        // Generation 3
+        assert_eq!(pokemon_generation(252), 3);
+        assert_eq!(pokemon_generation(386), 3);
+        
+        // Generation 4
+        assert_eq!(pokemon_generation(387), 4);
+        assert_eq!(pokemon_generation(493), 4);
+        
+        // Generation 5
+        assert_eq!(pokemon_generation(494), 5);
+        assert_eq!(pokemon_generation(649), 5);
+        
+        // Generation 6
+        assert_eq!(pokemon_generation(650), 6);
+        assert_eq!(pokemon_generation(721), 6);
+        
+        // Generation 7
+        assert_eq!(pokemon_generation(722), 7);
+        assert_eq!(pokemon_generation(809), 7);
+        
+        // Generation 8
+        assert_eq!(pokemon_generation(810), 8);
+        assert_eq!(pokemon_generation(905), 8);
+        
+        // Generation 9
+        assert_eq!(pokemon_generation(906), 9);
+        assert_eq!(pokemon_generation(1025), 9);
+        
+        // Beyond known range defaults to Gen 9
+        assert_eq!(pokemon_generation(2000), 9);
+        assert_eq!(pokemon_generation(9999), 9);
+    }
+
+    #[test]
+    fn test_screen_all() {
+        let screens = Screen::all();
+        assert_eq!(screens.len(), 4);
+        assert_eq!(screens[0], Screen::PokemonList);
+        assert_eq!(screens[1], Screen::PokemonDetail);
+        assert_eq!(screens[2], Screen::TypeChart);
+        assert_eq!(screens[3], Screen::TeamBuilder);
+    }
+
+    #[test]
+    fn test_screen_label() {
+        assert_eq!(Screen::PokemonList.label(), "Pokédex");
+        assert_eq!(Screen::PokemonDetail.label(), "Detail");
+        assert_eq!(Screen::TypeChart.label(), "Type Chart");
+        assert_eq!(Screen::TeamBuilder.label(), "Team Builder");
+    }
+
+    #[test]
+    fn test_screen_index() {
+        assert_eq!(Screen::PokemonList.index(), 0);
+        assert_eq!(Screen::PokemonDetail.index(), 1);
+        assert_eq!(Screen::TypeChart.index(), 2);
+        assert_eq!(Screen::TeamBuilder.index(), 3);
+    }
+
+    #[test]
+    fn test_app_new() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let app = App::new(tx);
+        
+        assert!(app.running);
+        assert_eq!(app.screen, Screen::PokemonList);
+        assert!(app.pokemon_list.is_empty());
+        assert_eq!(app.list_state, 0);
+        assert_eq!(app.list_loading, LoadingState::Idle);
+        assert!(!app.search_mode);
+        assert!(app.search_query.is_empty());
+        assert_eq!(app.generation_filter, None);
+        assert!(app.detail.is_none());
+        assert_eq!(app.detail_loading, LoadingState::Idle);
+        assert!(app.sprite_bytes.is_none());
+        assert_eq!(app.detail_pokemon_id, None);
+        assert!(app.type_infos.is_empty());
+        assert_eq!(app.type_chart_loading, LoadingState::Idle);
+        assert_eq!(app.type_chart_scroll_x, 0);
+        assert_eq!(app.type_chart_scroll_y, 0);
+        assert_eq!(app.current_team, 0);
+        assert_eq!(app.team_slot_selected, 0);
+        assert_eq!(app.modal, None);
+        assert_eq!(app.modal_selected, 0);
+        assert!(app.modal_search.is_empty());
+        assert!(app.available_moves.is_empty());
+        assert_eq!(app.moves_loading, LoadingState::Idle);
+        assert_eq!(app.error_message, None);
+    }
+
+    #[test]
+    fn test_app_filtered_list_no_filters() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+        
+        app.pokemon_list = vec![
+            PokemonSummary { id: 1, name: "bulbasaur".to_string(), types: vec![] },
+            PokemonSummary { id: 25, name: "pikachu".to_string(), types: vec![] },
+            PokemonSummary { id: 152, name: "chikorita".to_string(), types: vec![] },
+        ];
+        
+        let filtered = app.filtered_list();
+        assert_eq!(filtered.len(), 3);
+    }
+
+    #[test]
+    fn test_app_filtered_list_with_search() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+        
+        app.pokemon_list = vec![
+            PokemonSummary { id: 1, name: "bulbasaur".to_string(), types: vec![] },
+            PokemonSummary { id: 25, name: "pikachu".to_string(), types: vec![] },
+            PokemonSummary { id: 152, name: "chikorita".to_string(), types: vec![] },
+        ];
+        
+        app.search_query = "pika".to_string();
+        let filtered = app.filtered_list();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "pikachu");
+    }
+
+    #[test]
+    fn test_app_filtered_list_with_id_search() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+        
+        app.pokemon_list = vec![
+            PokemonSummary { id: 1, name: "bulbasaur".to_string(), types: vec![] },
+            PokemonSummary { id: 25, name: "pikachu".to_string(), types: vec![] },
+        ];
+        
+        app.search_query = "25".to_string();
+        let filtered = app.filtered_list();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, 25);
+    }
+
+    #[test]
+    fn test_app_filtered_list_with_generation_filter() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+        
+        app.pokemon_list = vec![
+            PokemonSummary { id: 1, name: "bulbasaur".to_string(), types: vec![] },
+            PokemonSummary { id: 25, name: "pikachu".to_string(), types: vec![] },
+            PokemonSummary { id: 152, name: "chikorita".to_string(), types: vec![] },
+        ];
+        
+        app.generation_filter = Some(1);
+        let filtered = app.filtered_list();
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|p| p.id <= 151));
+    }
+
+    #[test]
+    fn test_app_filtered_list_with_both_filters() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+        
+        app.pokemon_list = vec![
+            PokemonSummary { id: 1, name: "bulbasaur".to_string(), types: vec![] },
+            PokemonSummary { id: 25, name: "pikachu".to_string(), types: vec![] },
+            PokemonSummary { id: 152, name: "chikorita".to_string(), types: vec![] },
+        ];
+        
+        app.generation_filter = Some(1);
+        app.search_query = "bulb".to_string();
+        let filtered = app.filtered_list();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "bulbasaur");
+    }
+
+    #[test]
+    fn test_app_current_team() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let app = App::new(tx);
+        
+        let team = app.current_team();
+        assert_eq!(team.name, "Team 1");
+        assert!(team.members.is_empty());
+    }
+
+    #[test]
+    fn test_app_modal_filtered_list() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+        
+        app.pokemon_list = vec![
+            PokemonSummary { id: 1, name: "bulbasaur".to_string(), types: vec![] },
+            PokemonSummary { id: 25, name: "pikachu".to_string(), types: vec![] },
+        ];
+        
+        app.modal_search = "pika".to_string();
+        let filtered = app.modal_filtered_list();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "pikachu");
+    }
+
+    #[test]
+    fn test_loading_state_equality() {
+        assert_eq!(LoadingState::Idle, LoadingState::Idle);
+        assert_eq!(LoadingState::Loading, LoadingState::Loading);
+        assert_eq!(LoadingState::Loaded, LoadingState::Loaded);
+        assert_eq!(LoadingState::Error, LoadingState::Error);
+        assert_ne!(LoadingState::Idle, LoadingState::Loading);
+    }
+
+    #[test]
+    fn test_modal_equality() {
+        assert_eq!(Modal::PokemonPicker, Modal::PokemonPicker);
+        assert_eq!(Modal::MovePicker, Modal::MovePicker);
+        assert_ne!(Modal::PokemonPicker, Modal::MovePicker);
     }
 }

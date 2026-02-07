@@ -1,0 +1,30 @@
+[tool.tarpaulin]
+# Minimum coverage threshold
+line_threshold = 80.0
+branch_threshold = 80.0
+
+# Exclude UI rendering code and main entry point (difficult to test)
+exclude_files = [
+    "src/main.rs",
+    "src/tui.rs",
+    "src/ui/pokemon_detail.rs",
+    "src/ui/pokemon_list.rs",
+    "src/ui/team_builder.rs",
+    "src/ui/type_chart.rs",
+]
+
+# Exclude test modules themselves
+exclude_globs = [
+    "**/tests/**",
+    "**/test_utils.rs",
+]
+
+# Timeout for tests (in seconds)
+timeout = 300
+
+# Output format
+out = ["Html", "Xml"]
+
+# Fail if coverage is below threshold
+fail_under = 80
+
