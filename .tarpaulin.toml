@@ -1,4 +1,4 @@
-[general]
+[tarpaulin]
 # Minimum coverage threshold
 line_threshold = 80.0
 branch_threshold = 80.0
@@ -19,8 +19,8 @@ exclude_globs = [
     "**/test_utils.rs",
 ]
 
-# Timeout for tests (in seconds)
-timeout = 300
+# Timeout for tests (as duration string)
+timeout = "300s"
 
 # Output format
 out = ["Html", "Xml"]
