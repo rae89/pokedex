@@ -15,6 +15,22 @@ fn extract_id_from_url(url: &str) -> Option<u32> {
         .ok()
 }
 
+/// Calculate Pokemon generation from ID based on standard ranges
+fn pokemon_generation(id: u32) -> u8 {
+    match id {
+        1..=151 => 1,
+        152..=251 => 2,
+        252..=386 => 3,
+        387..=493 => 4,
+        494..=649 => 5,
+        650..=721 => 6,
+        722..=809 => 7,
+        810..=905 => 8,
+        906..=1025 => 9,
+        _ => 9, // Default to Gen 9 for any IDs beyond known range
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Screen {
     PokemonList,
@@ -76,6 +92,7 @@ pub struct App {
     pub list_loading: LoadingState,
     pub search_mode: bool,
     pub search_query: String,
+    pub generation_filter: Option<u8>, // None = all generations, Some(1-9) = specific generation
 
     // Pokemon detail
     pub detail: Option<Box<PokemonDetail>>,
@@ -115,6 +132,7 @@ impl App {
             list_loading: LoadingState::Idle,
             search_mode: false,
             search_query: String::new(),
+            generation_filter: None,
             detail: None,
             detail_loading: LoadingState::Idle,
             sprite_bytes: None,
@@ -137,15 +155,20 @@ impl App {
     }
 
     pub fn filtered_list(&self) -> Vec<&PokemonSummary> {
-        if self.search_query.is_empty() {
-            self.pokemon_list.iter().collect()
-        } else {
-            let q = self.search_query.to_lowercase();
-            self.pokemon_list
-                .iter()
-                .filter(|p| p.name.contains(&q) || p.id.to_string().contains(&q))
-                .collect()
+        let mut filtered: Vec<&PokemonSummary> = self.pokemon_list.iter().collect();
+
+        // Apply generation filter
+        if let Some(gen) = self.generation_filter {
+            filtered.retain(|p| pokemon_generation(p.id) == gen);
         }
+
+        // Apply search query filter
+        if !self.search_query.is_empty() {
+            let q = self.search_query.to_lowercase();
+            filtered.retain(|p| p.name.contains(&q) || p.id.to_string().contains(&q));
+        }
+
+        filtered
     }
 
     pub fn current_team(&self) -> &Team {
@@ -391,7 +414,7 @@ impl App {
                 self.on_screen_enter();
                 return;
             }
-            KeyCode::Char(c @ '1'..='4') if !self.search_mode => {
+            KeyCode::Char(c @ '1'..='4') if !self.search_mode && self.screen != Screen::PokemonList => {
                 let idx = (c as usize) - ('1' as usize);
                 self.screen = Screen::all()[idx];
                 self.on_screen_enter();
@@ -452,6 +475,35 @@ impl App {
             KeyCode::Char('/') => {
                 self.search_mode = true;
                 self.search_query.clear();
+            }
+            KeyCode::Char('G') => {
+                // Cycle through generations: None -> Gen 1 -> ... -> Gen 9 -> None
+                self.generation_filter = match self.generation_filter {
+                    None => Some(1),
+                    Some(9) => None,
+                    Some(n) => Some(n + 1),
+                };
+                self.list_state = 0;
+            }
+            KeyCode::Char('g') => {
+                // Also allow lowercase 'g' to cycle
+                self.generation_filter = match self.generation_filter {
+                    None => Some(1),
+                    Some(9) => None,
+                    Some(n) => Some(n + 1),
+                };
+                self.list_state = 0;
+            }
+            KeyCode::Char('0') => {
+                // Clear generation filter
+                self.generation_filter = None;
+                self.list_state = 0;
+            }
+            KeyCode::Char(c @ '1'..='9') => {
+                // Direct generation selection (1-9)
+                let gen = (c as u8) - b'0';
+                self.generation_filter = Some(gen);
+                self.list_state = 0;
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.list_state > 0 {
@@ -662,15 +714,20 @@ impl App {
     }
 
     pub fn modal_filtered_list(&self) -> Vec<&PokemonSummary> {
-        if self.modal_search.is_empty() {
-            self.pokemon_list.iter().collect()
-        } else {
-            let q = self.modal_search.to_lowercase();
-            self.pokemon_list
-                .iter()
-                .filter(|p| p.name.contains(&q) || p.id.to_string().contains(&q))
-                .collect()
+        let mut filtered: Vec<&PokemonSummary> = self.pokemon_list.iter().collect();
+
+        // Apply generation filter
+        if let Some(gen) = self.generation_filter {
+            filtered.retain(|p| pokemon_generation(p.id) == gen);
         }
+
+        // Apply search query filter
+        if !self.modal_search.is_empty() {
+            let q = self.modal_search.to_lowercase();
+            filtered.retain(|p| p.name.contains(&q) || p.id.to_string().contains(&q));
+        }
+
+        filtered
     }
 
     fn handle_move_picker_key(&mut self, key: KeyEvent) {

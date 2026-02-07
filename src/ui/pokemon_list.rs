@@ -8,9 +8,14 @@ use crate::app::{App, LoadingState};
 use crate::ui::type_color;
 
 pub fn draw(f: &mut Frame, app: &App, area: Rect) {
-    let chunks = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area);
+    let chunks = Layout::vertical([Constraint::Length(4), Constraint::Min(0)]).split(area);
 
-    // Search bar
+    // Search bar with generation filter
+    let gen_filter_text = match app.generation_filter {
+        Some(gen) => format!("Gen {}", gen),
+        None => "All Gens".to_string(),
+    };
+    
     let search_text = if app.search_mode {
         format!("🔍 Search: {}▌", app.search_query)
     } else if !app.search_query.is_empty() {
@@ -18,8 +23,12 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     } else {
         "Press / to search  |  ↑↓/jk navigate  |  Enter select".to_string()
     };
+    
+    let filter_line = format!("Generation: {} (G to cycle, 1-9 to select, 0 to clear)", gen_filter_text);
+    let full_text = format!("{}\n{}", search_text, filter_line);
+    
     let search_block = Block::default().borders(Borders::ALL).title(" Search ");
-    let search = Paragraph::new(search_text)
+    let search = Paragraph::new(full_text)
         .block(search_block)
         .style(if app.search_mode {
             Style::default().fg(Color::Yellow)
