@@ -7,7 +7,7 @@ use crate::models::pokemon::{MoveDetail, PokemonDetail, PokemonSummary};
 use crate::models::team::{Team, TeamData, TeamMember, TeamMove};
 use crate::models::type_data::TypeInfo;
 
-pub(crate) fn extract_id_from_url(url: &str) -> Option<u32> {
+fn extract_id_from_url(url: &str) -> Option<u32> {
     url.trim_end_matches('/')
         .rsplit('/')
         .next()?
@@ -16,7 +16,7 @@ pub(crate) fn extract_id_from_url(url: &str) -> Option<u32> {
 }
 
 /// Calculate Pokemon generation from ID based on standard ranges
-pub(crate) fn pokemon_generation(id: u32) -> u8 {
+fn pokemon_generation(id: u32) -> u8 {
     match id {
         1..=151 => 1,
         152..=251 => 2,
@@ -778,56 +778,56 @@ mod tests {
 
     #[test]
     fn test_extract_id_from_url() {
-        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/25/"), Some(25));
-        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/1"), Some(1));
-        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/151/"), Some(151));
-        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/999/"), Some(999));
-        assert_eq!(extract_id_from_url("invalid"), None);
-        assert_eq!(extract_id_from_url(""), None);
-        assert_eq!(extract_id_from_url("https://pokeapi.co/api/v2/pokemon/"), None);
+        assert_eq!(super::extract_id_from_url("https://pokeapi.co/api/v2/pokemon/25/"), Some(25));
+        assert_eq!(super::extract_id_from_url("https://pokeapi.co/api/v2/pokemon/1"), Some(1));
+        assert_eq!(super::extract_id_from_url("https://pokeapi.co/api/v2/pokemon/151/"), Some(151));
+        assert_eq!(super::extract_id_from_url("https://pokeapi.co/api/v2/pokemon/999/"), Some(999));
+        assert_eq!(super::extract_id_from_url("invalid"), None);
+        assert_eq!(super::extract_id_from_url(""), None);
+        assert_eq!(super::extract_id_from_url("https://pokeapi.co/api/v2/pokemon/"), None);
     }
 
     #[test]
     fn test_pokemon_generation() {
         // Generation 1
-        assert_eq!(pokemon_generation(1), 1);
-        assert_eq!(pokemon_generation(151), 1);
+        assert_eq!(super::pokemon_generation(1), 1);
+        assert_eq!(super::pokemon_generation(151), 1);
         
         // Generation 2
-        assert_eq!(pokemon_generation(152), 2);
-        assert_eq!(pokemon_generation(251), 2);
+        assert_eq!(super::pokemon_generation(152), 2);
+        assert_eq!(super::pokemon_generation(251), 2);
         
         // Generation 3
-        assert_eq!(pokemon_generation(252), 3);
-        assert_eq!(pokemon_generation(386), 3);
+        assert_eq!(super::pokemon_generation(252), 3);
+        assert_eq!(super::pokemon_generation(386), 3);
         
         // Generation 4
-        assert_eq!(pokemon_generation(387), 4);
-        assert_eq!(pokemon_generation(493), 4);
+        assert_eq!(super::pokemon_generation(387), 4);
+        assert_eq!(super::pokemon_generation(493), 4);
         
         // Generation 5
-        assert_eq!(pokemon_generation(494), 5);
-        assert_eq!(pokemon_generation(649), 5);
+        assert_eq!(super::pokemon_generation(494), 5);
+        assert_eq!(super::pokemon_generation(649), 5);
         
         // Generation 6
-        assert_eq!(pokemon_generation(650), 6);
-        assert_eq!(pokemon_generation(721), 6);
+        assert_eq!(super::pokemon_generation(650), 6);
+        assert_eq!(super::pokemon_generation(721), 6);
         
         // Generation 7
-        assert_eq!(pokemon_generation(722), 7);
-        assert_eq!(pokemon_generation(809), 7);
+        assert_eq!(super::pokemon_generation(722), 7);
+        assert_eq!(super::pokemon_generation(809), 7);
         
         // Generation 8
-        assert_eq!(pokemon_generation(810), 8);
-        assert_eq!(pokemon_generation(905), 8);
+        assert_eq!(super::pokemon_generation(810), 8);
+        assert_eq!(super::pokemon_generation(905), 8);
         
         // Generation 9
-        assert_eq!(pokemon_generation(906), 9);
-        assert_eq!(pokemon_generation(1025), 9);
+        assert_eq!(super::pokemon_generation(906), 9);
+        assert_eq!(super::pokemon_generation(1025), 9);
         
         // Beyond known range defaults to Gen 9
-        assert_eq!(pokemon_generation(2000), 9);
-        assert_eq!(pokemon_generation(9999), 9);
+        assert_eq!(super::pokemon_generation(2000), 9);
+        assert_eq!(super::pokemon_generation(9999), 9);
     }
 
     #[test]

@@ -53,7 +53,7 @@ impl SpriteWidget {
     }
 }
 
-pub(crate) fn sample_pixel(img: &DynamicImage, col: u32, row: u32, scale: f64) -> Option<(u8, u8, u8)> {
+fn sample_pixel(img: &DynamicImage, col: u32, row: u32, scale: f64) -> Option<(u8, u8, u8)> {
     let sx = ((col as f64) * scale) as u32;
     let sy = ((row as f64) * scale) as u32;
     let (w, h) = img.dimensions();
@@ -68,7 +68,7 @@ pub(crate) fn sample_pixel(img: &DynamicImage, col: u32, row: u32, scale: f64) -
     }
 }
 
-pub(crate) fn to_color(rgb: (u8, u8, u8)) -> Color {
+fn to_color(rgb: (u8, u8, u8)) -> Color {
     Color::Rgb(rgb.0, rgb.1, rgb.2)
 }
 
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn test_to_color() {
-        let color = to_color((255, 128, 64));
+        let color = super::to_color((255, 128, 64));
         match color {
             Color::Rgb(r, g, b) => {
                 assert_eq!(r, 255);
@@ -169,21 +169,21 @@ mod tests {
     #[test]
     fn test_sample_pixel_within_bounds() {
         let img = create_test_image(10, 10);
-        let pixel = sample_pixel(&img, 5, 5, 1.0);
+        let pixel = super::sample_pixel(&img, 5, 5, 1.0);
         assert!(pixel.is_some());
     }
 
     #[test]
     fn test_sample_pixel_out_of_bounds() {
         let img = create_test_image(10, 10);
-        let pixel = sample_pixel(&img, 20, 20, 1.0);
+        let pixel = super::sample_pixel(&img, 20, 20, 1.0);
         assert!(pixel.is_none());
     }
 
     #[test]
     fn test_sample_pixel_transparent() {
         let img = create_transparent_image(10, 10);
-        let pixel = sample_pixel(&img, 5, 5, 1.0);
+        let pixel = super::sample_pixel(&img, 5, 5, 1.0);
         assert!(pixel.is_none()); // Transparent pixels return None
     }
 
@@ -191,7 +191,9 @@ mod tests {
     fn test_sprite_widget_from_image_single_pixel() {
         let img = create_test_image(1, 1);
         let widget = SpriteWidget::from_image(&img, 10, 10);
-        // Should handle small images gracefully
-        assert!(!widget.cells.is_empty() || widget.cells.is_empty()); // Either is fine
+        // Should handle small images gracefully - should create at least one cell row
+        // (height is made even, so 1 pixel becomes 2, which creates 1 row)
+        assert!(!widget.cells.is_empty());
+        assert_eq!(widget.cells.len(), 1);
     }
 }

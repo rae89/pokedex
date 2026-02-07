@@ -36,27 +36,20 @@ impl ApiClient {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    use std::path::PathBuf;
 
-    fn create_test_client(cache_dir: PathBuf) -> ApiClient {
-        let _ = std::fs::create_dir_all(&cache_dir);
-        ApiClient {
-            client: reqwest::Client::new(),
-            cache_dir,
-        }
-    }
 
     #[tokio::test]
     async fn test_fetch_pokemon_list_url_construction() {
         // Test that the URL is constructed correctly
         // In a real scenario with mocking, we'd verify the request goes to the right URL
         let temp_dir = TempDir::new().unwrap();
-        let client = create_test_client(temp_dir.path().to_path_buf());
+        let cache_dir = temp_dir.path().to_path_buf();
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
         
         // Pre-populate cache with mock data
         let url = "https://pokeapi.co/api/v2/pokemon?limit=10000";
         let cache_key = ApiClient::url_to_cache_key(url);
-        let cache_path = client.cache_dir.join(&cache_key);
+        let cache_path = cache_dir.join(&cache_key);
         let mock_response = r#"{"results": [{"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon/1/"}]}"#;
         std::fs::write(&cache_path, mock_response).unwrap();
 
@@ -70,12 +63,13 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_pokemon_detail_url_construction() {
         let temp_dir = TempDir::new().unwrap();
-        let client = create_test_client(temp_dir.path().to_path_buf());
+        let cache_dir = temp_dir.path().to_path_buf();
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
         
         // Pre-populate cache
         let url = "https://pokeapi.co/api/v2/pokemon/1";
         let cache_key = ApiClient::url_to_cache_key(url);
-        let cache_path = client.cache_dir.join(&cache_key);
+        let cache_path = cache_dir.join(&cache_key);
         let mock_response = r#"{
             "id": 1,
             "name": "bulbasaur",
@@ -99,12 +93,13 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_type_info() {
         let temp_dir = TempDir::new().unwrap();
-        let client = create_test_client(temp_dir.path().to_path_buf());
+        let cache_dir = temp_dir.path().to_path_buf();
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
         
         // Pre-populate cache
         let url = "https://pokeapi.co/api/v2/type/fire";
         let cache_key = ApiClient::url_to_cache_key(url);
-        let cache_path = client.cache_dir.join(&cache_key);
+        let cache_path = cache_dir.join(&cache_key);
         let mock_response = r#"{
             "id": 10,
             "name": "fire",
@@ -129,12 +124,13 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_move_detail() {
         let temp_dir = TempDir::new().unwrap();
-        let client = create_test_client(temp_dir.path().to_path_buf());
+        let cache_dir = temp_dir.path().to_path_buf();
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
         
         // Pre-populate cache
         let url = "https://pokeapi.co/api/v2/move/tackle";
         let cache_key = ApiClient::url_to_cache_key(url);
-        let cache_path = client.cache_dir.join(&cache_key);
+        let cache_path = cache_dir.join(&cache_key);
         let mock_response = r#"{
             "id": 33,
             "name": "tackle",
@@ -157,12 +153,13 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_sprite_bytes() {
         let temp_dir = TempDir::new().unwrap();
-        let client = create_test_client(temp_dir.path().to_path_buf());
+        let cache_dir = temp_dir.path().to_path_buf();
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
         
         // Pre-populate cache
         let url = "https://example.com/sprite.png";
         let cache_key = ApiClient::url_to_cache_key(url);
-        let cache_path = client.cache_dir.join(&cache_key);
+        let cache_path = cache_dir.join(&cache_key);
         let mock_bytes = b"fake png data";
         std::fs::write(&cache_path, mock_bytes).unwrap();
 
