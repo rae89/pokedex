@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_centered_rect() {
         let parent = Rect::new(0, 0, 100, 50);
-        
+
         // Test 50% x 50% rect
         // Note: Layout uses integer division, so values may vary slightly
         let rect = centered_rect(50, 50, parent);
@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn test_centered_rect_small_percentage() {
         let parent = Rect::new(0, 0, 100, 50);
-        
+
         // Test 20% x 20% rect
         let rect = centered_rect(20, 20, parent);
         assert_eq!(rect.x, 40);
@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn test_centered_rect_large_percentage() {
         let parent = Rect::new(0, 0, 100, 50);
-        
+
         // Test 90% x 90% rect
         // Note: Layout uses integer division, so values may vary slightly
         let rect = centered_rect(90, 90, parent);
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn test_centered_rect_full_size() {
         let parent = Rect::new(0, 0, 100, 50);
-        
+
         // Test 100% x 100% rect (should still be centered, but fills parent)
         let rect = centered_rect(100, 100, parent);
         assert_eq!(rect.x, 0);
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_centered_rect_odd_dimensions() {
         let parent = Rect::new(0, 0, 101, 51);
-        
+
         // Test with odd parent dimensions
         let rect = centered_rect(50, 50, parent);
         // Should handle odd dimensions gracefully

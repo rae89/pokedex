@@ -15,7 +15,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         Some(gen) => format!("Gen {}", gen),
         None => "All Gens".to_string(),
     };
-    
+
     let search_text = if app.search_mode {
         format!("🔍 Search: {}▌", app.search_query)
     } else if !app.search_query.is_empty() {
@@ -23,10 +23,13 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     } else {
         "Press / to search  |  ↑↓/jk navigate  |  Enter select".to_string()
     };
-    
-    let filter_line = format!("Generation: {} (G to cycle, 1-9 to select, 0 to clear)", gen_filter_text);
+
+    let filter_line = format!(
+        "Generation: {} (G to cycle, 1-9 to select, 0 to clear)",
+        gen_filter_text
+    );
     let full_text = format!("{}\n{}", search_text, filter_line);
-    
+
     let search_block = Block::default().borders(Borders::ALL).title(" Search ");
     let search = Paragraph::new(full_text)
         .block(search_block)
@@ -104,13 +107,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 })
                 .collect();
 
-            let title = format!(
-                " Pokédex ({}/{}) ",
-                filtered.len(),
-                app.pokemon_list.len()
-            );
-            let list = List::new(items)
-                .block(Block::default().borders(Borders::ALL).title(title));
+            let title = format!(" Pokédex ({}/{}) ", filtered.len(), app.pokemon_list.len());
+            let list = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
             f.render_widget(list, chunks[1]);
         }
     }

@@ -32,8 +32,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         None => return,
     };
 
-    let chunks = Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
-        .split(area);
+    let chunks =
+        Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)]).split(area);
 
     // Left: sprite
     let sprite_block = Block::default()
@@ -43,7 +43,9 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(sprite_block, chunks[0]);
 
     if let Some(ref bytes) = app.sprite_bytes {
-        if let Some(widget) = SpriteWidget::from_png_bytes(bytes, sprite_inner.width, sprite_inner.height) {
+        if let Some(widget) =
+            SpriteWidget::from_png_bytes(bytes, sprite_inner.width, sprite_inner.height)
+        {
             f.render_widget(&widget, sprite_inner);
         }
     }
@@ -52,14 +54,21 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let info_block = Block::default()
         .borders(Borders::ALL)
         .title(format!(" {} ", capitalize(&detail.name)))
-        .title_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD));
+        .title_style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        );
     let info_inner = info_block.inner(chunks[1]);
     f.render_widget(info_block, chunks[1]);
 
     let mut lines: Vec<Line> = Vec::new();
 
     // Types
-    let mut type_spans = vec![Span::styled("Types: ", Style::default().fg(Color::DarkGray))];
+    let mut type_spans = vec![Span::styled(
+        "Types: ",
+        Style::default().fg(Color::DarkGray),
+    )];
     for t in &detail.types {
         type_spans.push(Span::styled(
             format!(" {} ", t.type_info.name.to_uppercase()),
@@ -148,8 +157,14 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         let bar_empty = "░".repeat(empty);
 
         lines.push(Line::from(vec![
-            Span::styled(format!("{:<7}", label), Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{:>3} ", stat.base_stat), Style::default().fg(Color::White)),
+            Span::styled(
+                format!("{:<7}", label),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                format!("{:>3} ", stat.base_stat),
+                Style::default().fg(Color::White),
+            ),
             Span::styled(bar_filled, Style::default().fg(color)),
             Span::styled(bar_empty, Style::default().fg(Color::Rgb(60, 60, 60))),
         ]));

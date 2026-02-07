@@ -79,7 +79,6 @@ mod tests {
         value: String,
     }
 
-
     #[test]
     fn test_url_to_cache_key() {
         assert_eq!(
@@ -120,7 +119,6 @@ mod tests {
         assert_eq!(result.value, "cached");
     }
 
-
     #[tokio::test]
     async fn test_get_bytes_cached_cache_hit() {
         let temp_dir = TempDir::new().unwrap();
@@ -146,11 +144,11 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().join("api");
         let client = ApiClient::new_with_cache_dir(cache_dir.clone());
-        
+
         // Verify the cache directory was created
         assert!(cache_dir.exists());
         assert!(cache_dir.is_dir());
-        
+
         // Verify the client can be used (indirectly tests that new() would work similarly)
         drop(client);
     }

@@ -37,7 +37,6 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-
     #[tokio::test]
     async fn test_fetch_pokemon_list_url_construction() {
         // Test that the URL is constructed correctly
@@ -45,7 +44,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
         let client = ApiClient::new_with_cache_dir(cache_dir.clone());
-        
+
         // Pre-populate cache with mock data
         let url = "https://pokeapi.co/api/v2/pokemon?limit=10000";
         let cache_key = ApiClient::url_to_cache_key(url);
@@ -65,7 +64,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
         let client = ApiClient::new_with_cache_dir(cache_dir.clone());
-        
+
         // Pre-populate cache
         let url = "https://pokeapi.co/api/v2/pokemon/1";
         let cache_key = ApiClient::url_to_cache_key(url);
@@ -95,7 +94,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
         let client = ApiClient::new_with_cache_dir(cache_dir.clone());
-        
+
         // Pre-populate cache
         let url = "https://pokeapi.co/api/v2/type/fire";
         let cache_key = ApiClient::url_to_cache_key(url);
@@ -126,7 +125,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
         let client = ApiClient::new_with_cache_dir(cache_dir.clone());
-        
+
         // Pre-populate cache
         let url = "https://pokeapi.co/api/v2/move/tackle";
         let cache_key = ApiClient::url_to_cache_key(url);
@@ -155,7 +154,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let cache_dir = temp_dir.path().to_path_buf();
         let client = ApiClient::new_with_cache_dir(cache_dir.clone());
-        
+
         // Pre-populate cache
         let url = "https://example.com/sprite.png";
         let cache_key = ApiClient::url_to_cache_key(url);

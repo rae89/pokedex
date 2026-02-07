@@ -66,8 +66,12 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let visible_cols = ((inner.width as usize).saturating_sub(label_width)) / col_width;
     let visible_rows = (inner.height as usize).saturating_sub(2); // header + help line
 
-    let start_col = app.type_chart_scroll_x.min(18usize.saturating_sub(visible_cols));
-    let start_row = app.type_chart_scroll_y.min(18usize.saturating_sub(visible_rows));
+    let start_col = app
+        .type_chart_scroll_x
+        .min(18usize.saturating_sub(visible_cols));
+    let start_row = app
+        .type_chart_scroll_y
+        .min(18usize.saturating_sub(visible_rows));
 
     let mut lines: Vec<Line> = Vec::new();
 
