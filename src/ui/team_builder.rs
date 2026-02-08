@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::app::{App, LoadingState, Modal};
 use crate::models::pokemon::PokemonSummary;
-use crate::ui::{centered_rect, type_color};
+use crate::ui::{capitalize, centered_rect, type_color};
 
 pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let chunks =
@@ -441,10 +441,3 @@ fn is_super_effective(atk: &str, def: &str) -> bool {
     )
 }
 
-fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-    }
-}

@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::{App, LoadingState};
 use crate::models::pokemon::EvolutionChainLink;
 use crate::sprite::renderer::SpriteWidget;
-use crate::ui::type_color;
+use crate::ui::{capitalize, type_color};
 
 pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     match app.detail_loading {
@@ -326,14 +326,6 @@ fn format_evolution_method(link: &EvolutionChainLink) -> String {
             }
         }
         other => capitalize(&other.replace('-', " ")),
-    }
-}
-
-fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
     }
 }
 

@@ -123,41 +123,10 @@ pub struct App {
 
 impl App {
     pub fn new(tx: mpsc::UnboundedSender<AppEvent>) -> Self {
-        Self {
-            running: true,
-            screen: Screen::PokemonList,
-            pokemon_list: Vec::new(),
-            list_state: 0,
-            list_loading: LoadingState::Idle,
-            search_mode: false,
-            search_query: String::new(),
-            generation_filter: None,
-            detail: None,
-            detail_loading: LoadingState::Idle,
-            sprite_bytes: None,
-            detail_pokemon_id: None,
-            detail_list_index: None,
-            evolution_chain: None,
-            evolution_chain_loading: LoadingState::Idle,
-            type_infos: Vec::new(),
-            type_chart_loading: LoadingState::Idle,
-            type_chart_scroll_x: 0,
-            type_chart_scroll_y: 0,
-            team_data: TeamData::load(),
-            current_team: 0,
-            team_slot_selected: 0,
-            modal: None,
-            modal_selected: 0,
-            modal_search: String::new(),
-            available_moves: Vec::new(),
-            moves_loading: LoadingState::Idle,
-            error_message: None,
-            tx,
-        }
+        Self::new_with_team_data(tx, TeamData::load())
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_with_team_data(
+    fn new_with_team_data(
         tx: mpsc::UnboundedSender<AppEvent>,
         team_data: TeamData,
     ) -> Self {
@@ -194,7 +163,7 @@ impl App {
         }
     }
 
-    pub fn filtered_list(&self) -> Vec<&PokemonSummary> {
+    fn filter_pokemon_list(&self, query: &str) -> Vec<&PokemonSummary> {
         let mut filtered: Vec<&PokemonSummary> = self.pokemon_list.iter().collect();
 
         // Apply generation filter
@@ -203,12 +172,16 @@ impl App {
         }
 
         // Apply search query filter
-        if !self.search_query.is_empty() {
-            let q = self.search_query.to_lowercase();
+        if !query.is_empty() {
+            let q = query.to_lowercase();
             filtered.retain(|p| p.name.contains(&q) || p.id.to_string().contains(&q));
         }
 
         filtered
+    }
+
+    pub fn filtered_list(&self) -> Vec<&PokemonSummary> {
+        self.filter_pokemon_list(&self.search_query)
     }
 
     pub fn current_team(&self) -> &Team {
@@ -860,20 +833,7 @@ impl App {
     }
 
     pub fn modal_filtered_list(&self) -> Vec<&PokemonSummary> {
-        let mut filtered: Vec<&PokemonSummary> = self.pokemon_list.iter().collect();
-
-        // Apply generation filter
-        if let Some(gen) = self.generation_filter {
-            filtered.retain(|p| pokemon_generation(p.id) == gen);
-        }
-
-        // Apply search query filter
-        if !self.modal_search.is_empty() {
-            let q = self.modal_search.to_lowercase();
-            filtered.retain(|p| p.name.contains(&q) || p.id.to_string().contains(&q));
-        }
-
-        filtered
+        self.filter_pokemon_list(&self.modal_search)
     }
 
     fn handle_move_picker_key(&mut self, key: KeyEvent) {
@@ -921,6 +881,38 @@ impl App {
 mod tests {
     use super::*;
     use tokio::sync::mpsc;
+
+    fn test_summary(id: u32, name: &str) -> PokemonSummary {
+        PokemonSummary {
+            id,
+            name: name.to_string(),
+            types: vec![],
+        }
+    }
+
+    fn test_detail(id: u32, name: &str) -> PokemonDetail {
+        PokemonDetail {
+            id,
+            name: name.to_string(),
+            height: 0,
+            weight: 0,
+            types: vec![],
+            stats: vec![],
+            abilities: vec![],
+            moves: vec![],
+            sprites: crate::models::pokemon::Sprites {
+                front_default: None,
+            },
+        }
+    }
+
+    fn test_pokemon_list() -> Vec<PokemonSummary> {
+        vec![
+            test_summary(1, "bulbasaur"),
+            test_summary(25, "pikachu"),
+            test_summary(152, "chikorita"),
+        ]
+    }
 
     #[test]
     fn test_extract_id_from_url() {
@@ -1055,24 +1047,7 @@ mod tests {
     fn test_app_filtered_list_no_filters() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
-
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 152,
-                name: "chikorita".to_string(),
-                types: vec![],
-            },
-        ];
+        app.pokemon_list = test_pokemon_list();
 
         let filtered = app.filtered_list();
         assert_eq!(filtered.len(), 3);
@@ -1082,24 +1057,7 @@ mod tests {
     fn test_app_filtered_list_with_search() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
-
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 152,
-                name: "chikorita".to_string(),
-                types: vec![],
-            },
-        ];
+        app.pokemon_list = test_pokemon_list();
 
         app.search_query = "pika".to_string();
         let filtered = app.filtered_list();
@@ -1111,19 +1069,7 @@ mod tests {
     fn test_app_filtered_list_with_id_search() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
-
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-        ];
+        app.pokemon_list = vec![test_summary(1, "bulbasaur"), test_summary(25, "pikachu")];
 
         app.search_query = "25".to_string();
         let filtered = app.filtered_list();
@@ -1135,24 +1081,7 @@ mod tests {
     fn test_app_filtered_list_with_generation_filter() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
-
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 152,
-                name: "chikorita".to_string(),
-                types: vec![],
-            },
-        ];
+        app.pokemon_list = test_pokemon_list();
 
         app.generation_filter = Some(1);
         let filtered = app.filtered_list();
@@ -1164,24 +1093,7 @@ mod tests {
     fn test_app_filtered_list_with_both_filters() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
-
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 152,
-                name: "chikorita".to_string(),
-                types: vec![],
-            },
-        ];
+        app.pokemon_list = test_pokemon_list();
 
         app.generation_filter = Some(1);
         app.search_query = "bulb".to_string();
@@ -1206,19 +1118,7 @@ mod tests {
     fn test_app_modal_filtered_list() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
-
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-        ];
+        app.pokemon_list = vec![test_summary(1, "bulbasaur"), test_summary(25, "pikachu")];
 
         app.modal_search = "pika".to_string();
         let filtered = app.modal_filtered_list();
@@ -1246,53 +1146,17 @@ mod tests {
     async fn test_detail_navigation_right_arrow() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
+        app.pokemon_list = test_pokemon_list();
 
-        // Set up Pokemon list
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 152,
-                name: "chikorita".to_string(),
-                types: vec![],
-            },
-        ];
-
-        // Set up detail view for first Pokemon (index 0)
         app.screen = Screen::PokemonDetail;
         app.detail_list_index = Some(0);
         app.detail_pokemon_id = Some(1);
-
-        // Create a mock detail for the first Pokemon
-        let detail = PokemonDetail {
-            id: 1,
-            name: "bulbasaur".to_string(),
-            height: 7,
-            weight: 69,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        };
-        app.detail = Some(Box::new(detail));
+        app.detail = Some(Box::new(test_detail(1, "bulbasaur")));
         app.detail_loading = LoadingState::Loaded;
 
-        // Press right arrow to navigate to next Pokemon
         let key = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
         app.handle_key(key);
 
-        // Should navigate to next Pokemon (pikachu, id 25, index 1)
         assert_eq!(app.detail_list_index, Some(1));
         assert_eq!(app.detail_pokemon_id, Some(25));
     }
@@ -1301,53 +1165,17 @@ mod tests {
     async fn test_detail_navigation_left_arrow() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
+        app.pokemon_list = test_pokemon_list();
 
-        // Set up Pokemon list
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 152,
-                name: "chikorita".to_string(),
-                types: vec![],
-            },
-        ];
-
-        // Set up detail view for second Pokemon (index 1)
         app.screen = Screen::PokemonDetail;
         app.detail_list_index = Some(1);
         app.detail_pokemon_id = Some(25);
-
-        // Create a mock detail for the second Pokemon
-        let detail = PokemonDetail {
-            id: 25,
-            name: "pikachu".to_string(),
-            height: 4,
-            weight: 60,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        };
-        app.detail = Some(Box::new(detail));
+        app.detail = Some(Box::new(test_detail(25, "pikachu")));
         app.detail_loading = LoadingState::Loaded;
 
-        // Press left arrow to navigate to previous Pokemon
         let key = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
         app.handle_key(key);
 
-        // Should navigate to previous Pokemon (bulbasaur, id 1, index 0)
         assert_eq!(app.detail_list_index, Some(0));
         assert_eq!(app.detail_pokemon_id, Some(1));
     }
@@ -1356,48 +1184,17 @@ mod tests {
     fn test_detail_navigation_right_arrow_at_last_pokemon() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
+        app.pokemon_list = vec![test_summary(1, "bulbasaur"), test_summary(25, "pikachu")];
 
-        // Set up Pokemon list
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-        ];
-
-        // Set up detail view for last Pokemon (index 1)
         app.screen = Screen::PokemonDetail;
         app.detail_list_index = Some(1);
         app.detail_pokemon_id = Some(25);
-
-        // Create a mock detail for the last Pokemon
-        let detail = PokemonDetail {
-            id: 25,
-            name: "pikachu".to_string(),
-            height: 4,
-            weight: 60,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        };
-        app.detail = Some(Box::new(detail));
+        app.detail = Some(Box::new(test_detail(25, "pikachu")));
         app.detail_loading = LoadingState::Loaded;
 
-        // Press right arrow - should not navigate (already at last)
         let key = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
         app.handle_key(key);
 
-        // Should remain at last Pokemon
         assert_eq!(app.detail_list_index, Some(1));
         assert_eq!(app.detail_pokemon_id, Some(25));
     }
@@ -1406,48 +1203,17 @@ mod tests {
     fn test_detail_navigation_left_arrow_at_first_pokemon() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
+        app.pokemon_list = vec![test_summary(1, "bulbasaur"), test_summary(25, "pikachu")];
 
-        // Set up Pokemon list
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-        ];
-
-        // Set up detail view for first Pokemon (index 0)
         app.screen = Screen::PokemonDetail;
         app.detail_list_index = Some(0);
         app.detail_pokemon_id = Some(1);
-
-        // Create a mock detail for the first Pokemon
-        let detail = PokemonDetail {
-            id: 1,
-            name: "bulbasaur".to_string(),
-            height: 7,
-            weight: 69,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        };
-        app.detail = Some(Box::new(detail));
+        app.detail = Some(Box::new(test_detail(1, "bulbasaur")));
         app.detail_loading = LoadingState::Loaded;
 
-        // Press left arrow - should not navigate (already at first)
         let key = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
         app.handle_key(key);
 
-        // Should remain at first Pokemon
         assert_eq!(app.detail_list_index, Some(0));
         assert_eq!(app.detail_pokemon_id, Some(1));
     }
@@ -1456,58 +1222,20 @@ mod tests {
     async fn test_detail_navigation_respects_filtered_list() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
-
-        // Set up Pokemon list with multiple generations
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 152,
-                name: "chikorita".to_string(),
-                types: vec![],
-            },
-        ];
-
-        // Apply generation filter (only Gen 1 Pokemon)
+        app.pokemon_list = test_pokemon_list();
         app.generation_filter = Some(1);
 
-        // Set up detail view for first filtered Pokemon (bulbasaur, index 0 in filtered list)
         app.screen = Screen::PokemonDetail;
         app.detail_list_index = Some(0);
         app.detail_pokemon_id = Some(1);
-
-        // Create a mock detail
-        let detail = PokemonDetail {
-            id: 1,
-            name: "bulbasaur".to_string(),
-            height: 7,
-            weight: 69,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        };
-        app.detail = Some(Box::new(detail));
+        app.detail = Some(Box::new(test_detail(1, "bulbasaur")));
         app.detail_loading = LoadingState::Loaded;
 
-        // Press right arrow - should navigate to next Pokemon in filtered list (pikachu)
         let key = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
         app.handle_key(key);
 
-        // Should navigate to pikachu (index 1 in filtered list, which only has Gen 1 Pokemon)
         let filtered = app.filtered_list();
-        assert_eq!(filtered.len(), 2); // Only Gen 1 Pokemon
+        assert_eq!(filtered.len(), 2);
         assert_eq!(app.detail_list_index, Some(1));
         assert_eq!(app.detail_pokemon_id, Some(25));
     }
@@ -1516,32 +1244,14 @@ mod tests {
     async fn test_detail_navigation_from_list_screen() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
+        app.pokemon_list = vec![test_summary(1, "bulbasaur"), test_summary(25, "pikachu")];
 
-        // Set up Pokemon list
-        app.pokemon_list = vec![
-            PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-            PokemonSummary {
-                id: 25,
-                name: "pikachu".to_string(),
-                types: vec![],
-            },
-        ];
-
-        // Simulate selecting first Pokemon from list (index 0)
         app.list_state = 0;
         app.screen = Screen::PokemonList;
 
-        // Press Enter to view detail
         let enter_key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
         app.handle_key(enter_key);
 
-        // Should set detail_list_index when loading detail from list
-        // Note: load_detail is async, so we'll check that the index is set correctly
-        // when the detail is actually loaded. For now, we verify the screen changed.
         assert_eq!(app.screen, Screen::PokemonDetail);
     }
 
@@ -1601,31 +1311,12 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
 
-        // Set up an existing evolution chain
-        app.evolution_chain = Some(Box::new(crate::models::pokemon::EvolutionChain {
-            id: 1,
-            chain: crate::models::pokemon::EvolutionChainLink {
-                species: crate::models::pokemon::NamedResource {
-                    name: "bulbasaur".to_string(),
-                    url: String::new(),
-                },
-                evolution_details: vec![],
-                evolves_to: vec![],
-            },
-        }));
+        app.evolution_chain = Some(Box::new(make_chain(vec![("bulbasaur", "")])));
         app.evolution_chain_loading = LoadingState::Loaded;
+        app.pokemon_list = vec![test_summary(25, "pikachu")];
 
-        // Set up Pokemon list so load_detail can find the index
-        app.pokemon_list = vec![PokemonSummary {
-            id: 25,
-            name: "pikachu".to_string(),
-            types: vec![],
-        }];
-
-        // Load a different Pokemon's detail
         app.load_detail(25);
 
-        // Evolution chain should be reset; loading happens after detail arrives
         assert!(app.evolution_chain.is_none());
         assert_eq!(app.evolution_chain_loading, LoadingState::Idle);
     }
@@ -1635,24 +1326,11 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut app = App::new(tx);
 
-        // Set evolution chain to loaded state
         app.evolution_chain_loading = LoadingState::Loaded;
-        app.evolution_chain = Some(Box::new(crate::models::pokemon::EvolutionChain {
-            id: 1,
-            chain: crate::models::pokemon::EvolutionChainLink {
-                species: crate::models::pokemon::NamedResource {
-                    name: "bulbasaur".to_string(),
-                    url: String::new(),
-                },
-                evolution_details: vec![],
-                evolves_to: vec![],
-            },
-        }));
+        app.evolution_chain = Some(Box::new(make_chain(vec![("bulbasaur", "")])));
 
-        // API error should set other loading states to Error but keep evolution_chain data
         app.handle_event(AppEvent::ApiError("some error".to_string()));
 
-        // The chain data should still be there (only loading states change)
         assert!(app.evolution_chain.is_some());
     }
 
@@ -1772,28 +1450,14 @@ mod tests {
 
         app.screen = Screen::PokemonDetail;
         app.detail_pokemon_id = Some(1);
-        app.detail = Some(Box::new(PokemonDetail {
-            id: 1,
-            name: "bulbasaur".to_string(),
-            height: 7,
-            weight: 69,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        }));
+        app.detail = Some(Box::new(test_detail(1, "bulbasaur")));
         app.detail_loading = LoadingState::Loaded;
-
         app.evolution_chain = Some(Box::new(make_chain(vec![
             ("bulbasaur", "https://pokeapi.co/api/v2/pokemon-species/1/"),
             ("ivysaur", "https://pokeapi.co/api/v2/pokemon-species/2/"),
             ("venusaur", "https://pokeapi.co/api/v2/pokemon-species/3/"),
         ])));
 
-        // Press 'e' to navigate forward
         let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty());
         app.handle_key(key);
 
@@ -1807,28 +1471,14 @@ mod tests {
 
         app.screen = Screen::PokemonDetail;
         app.detail_pokemon_id = Some(1);
-        app.detail = Some(Box::new(PokemonDetail {
-            id: 1,
-            name: "bulbasaur".to_string(),
-            height: 7,
-            weight: 69,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        }));
+        app.detail = Some(Box::new(test_detail(1, "bulbasaur")));
         app.detail_loading = LoadingState::Loaded;
-
         app.evolution_chain = Some(Box::new(make_chain(vec![
             ("bulbasaur", "https://pokeapi.co/api/v2/pokemon-species/1/"),
             ("ivysaur", "https://pokeapi.co/api/v2/pokemon-species/2/"),
             ("venusaur", "https://pokeapi.co/api/v2/pokemon-species/3/"),
         ])));
 
-        // Press 'E' to navigate backward (wraps to venusaur)
         let key = KeyEvent::new(KeyCode::Char('E'), KeyModifiers::SHIFT);
         app.handle_key(key);
 
@@ -1841,29 +1491,15 @@ mod tests {
         let mut app = App::new(tx);
 
         app.screen = Screen::PokemonDetail;
-        app.detail_pokemon_id = Some(3); // venusaur (last in chain)
-        app.detail = Some(Box::new(PokemonDetail {
-            id: 3,
-            name: "venusaur".to_string(),
-            height: 20,
-            weight: 1000,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        }));
+        app.detail_pokemon_id = Some(3);
+        app.detail = Some(Box::new(test_detail(3, "venusaur")));
         app.detail_loading = LoadingState::Loaded;
-
         app.evolution_chain = Some(Box::new(make_chain(vec![
             ("bulbasaur", "https://pokeapi.co/api/v2/pokemon-species/1/"),
             ("ivysaur", "https://pokeapi.co/api/v2/pokemon-species/2/"),
             ("venusaur", "https://pokeapi.co/api/v2/pokemon-species/3/"),
         ])));
 
-        // Press 'e' to wrap forward to bulbasaur
         let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty());
         app.handle_key(key);
 
@@ -1877,27 +1513,13 @@ mod tests {
 
         app.screen = Screen::PokemonDetail;
         app.detail_pokemon_id = Some(128);
-        app.detail = Some(Box::new(PokemonDetail {
-            id: 128,
-            name: "tauros".to_string(),
-            height: 14,
-            weight: 884,
-            types: vec![],
-            stats: vec![],
-            abilities: vec![],
-            moves: vec![],
-            sprites: crate::models::pokemon::Sprites {
-                front_default: None,
-            },
-        }));
+        app.detail = Some(Box::new(test_detail(128, "tauros")));
         app.detail_loading = LoadingState::Loaded;
-
         app.evolution_chain = Some(Box::new(make_chain(vec![(
             "tauros",
             "https://pokeapi.co/api/v2/pokemon-species/128/",
         )])));
 
-        // Press 'e' — should do nothing for single-stage Pokemon
         let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty());
         app.handle_key(key);
 

@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use ratatui::Frame;
 
 use crate::app::{App, LoadingState};
-use crate::ui::type_color;
+use crate::ui::{capitalize, type_color};
 
 pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::vertical([Constraint::Length(4), Constraint::Min(0)]).split(area);
@@ -114,10 +114,3 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
-fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-    }
-}
