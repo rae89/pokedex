@@ -28,7 +28,7 @@ impl SpriteWidget {
         let out_w = ((w as f64) / scale).ceil() as u32;
         let out_h = ((h as f64) / scale).ceil() as u32;
         // Make sure height is even for half-block pairing
-        let out_h = if !out_h.is_multiple_of(2) {
+        let out_h = if out_h % 2 != 0 {
             out_h + 1
         } else {
             out_h
