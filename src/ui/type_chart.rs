@@ -66,8 +66,12 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let visible_cols = ((inner.width as usize).saturating_sub(label_width)) / col_width;
     let visible_rows = (inner.height as usize).saturating_sub(2); // header + help line
 
-    let start_col = app.type_chart_scroll_x.min(18usize.saturating_sub(visible_cols));
-    let start_row = app.type_chart_scroll_y.min(18usize.saturating_sub(visible_rows));
+    let start_col = app
+        .type_chart_scroll_x
+        .min(18usize.saturating_sub(visible_cols));
+    let start_row = app
+        .type_chart_scroll_y
+        .min(18usize.saturating_sub(visible_rows));
 
     let mut lines: Vec<Line> = Vec::new();
 
@@ -97,9 +101,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 .fg(type_color(type_name))
                 .add_modifier(Modifier::BOLD),
         )];
-        for c in start_col..(start_col + visible_cols).min(18) {
-            let val = matrix[r][c];
-            let (text, color) = match val {
+        for val in &matrix[r][start_col..(start_col + visible_cols).min(18)] {
+            let (text, color) = match *val {
                 v if v >= 2.0 => ("2×", Color::Rgb(80, 220, 80)),
                 v if v <= 0.0 => ("0", Color::Rgb(80, 80, 80)),
                 v if v < 1.0 => ("½×", Color::Rgb(220, 80, 80)),

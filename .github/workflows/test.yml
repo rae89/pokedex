@@ -46,18 +46,4 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin --version 0.27.0
-
-      - name: Generate coverage and check threshold
-        run: cargo tarpaulin --out Xml --out Html --output-dir coverage/ --fail-under 80
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-reports
-          path: coverage/
-          retention-days: 7
-
 

@@ -28,6 +28,8 @@ impl SpriteWidget {
         let out_w = ((w as f64) / scale).ceil() as u32;
         let out_h = ((h as f64) / scale).ceil() as u32;
         // Make sure height is even for half-block pairing
+        // Using manual modulo check instead of is_multiple_of() for stable Rust compatibility
+        #[allow(clippy::manual_is_multiple_of)]
         let out_h = if out_h % 2 != 0 { out_h + 1 } else { out_h };
 
         let mut cells = Vec::new();
@@ -84,7 +86,9 @@ impl Widget for &SpriteWidget {
                 }
                 let x = area.x + col_idx as u16;
                 let y = area.y + row_idx as u16;
-                buf[(x, y)].set_char(ch).set_style(Style::default().fg(fg).bg(bg));
+                buf[(x, y)]
+                    .set_char(ch)
+                    .set_style(Style::default().fg(fg).bg(bg));
             }
         }
     }
@@ -124,7 +128,7 @@ mod tests {
     fn test_sprite_widget_from_image() {
         let img = create_test_image(4, 4);
         let widget = SpriteWidget::from_image(&img, 10, 10);
-        
+
         // Should create cells (height/2 rows since we pair pixels)
         assert!(!widget.cells.is_empty());
     }
@@ -133,7 +137,7 @@ mod tests {
     fn test_sprite_widget_from_image_scaling() {
         let img = create_test_image(20, 20);
         let widget = SpriteWidget::from_image(&img, 10, 10);
-        
+
         // Should scale down to fit max dimensions
         assert!(widget.cells.len() <= 10);
         if !widget.cells.is_empty() {
@@ -147,11 +151,10 @@ mod tests {
         let invalid_bytes = b"not a png";
         let widget = SpriteWidget::from_png_bytes(invalid_bytes, 10, 10);
         assert!(widget.is_none());
-        
+
         // Note: Testing with actual PNG encoding would require more complex setup
         // The from_image method is tested separately, which covers the core logic
     }
-
 
     #[test]
     fn test_to_color() {

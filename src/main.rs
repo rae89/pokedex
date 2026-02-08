@@ -28,11 +28,7 @@ async fn main() -> Result<()> {
     result
 }
 
-async fn run(
-    terminal: &mut tui::Tui,
-    app: &mut App,
-    mut events: EventHandler,
-) -> Result<()> {
+async fn run(terminal: &mut tui::Tui, app: &mut App, mut events: EventHandler) -> Result<()> {
     while app.running {
         terminal.draw(|f| ui::draw(f, app))?;
 

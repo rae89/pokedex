@@ -73,20 +73,25 @@ mod tests {
     fn test_event_handler_tx() {
         let handler = EventHandler::new();
         let tx = handler.tx();
-        
+
         // Should be able to send events through cloned sender
         assert!(tx.send(AppEvent::Tick).is_ok());
-        assert!(tx.send(AppEvent::Key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()))).is_ok());
+        assert!(tx
+            .send(AppEvent::Key(KeyEvent::new(
+                KeyCode::Char('q'),
+                KeyModifiers::empty()
+            )))
+            .is_ok());
     }
 
     #[tokio::test]
     async fn test_event_handler_next() {
         let mut handler = EventHandler::new();
         let tx = handler.tx();
-        
+
         // Send an event
         tx.send(AppEvent::Tick).unwrap();
-        
+
         // Should receive it
         let event = handler.next().await.unwrap();
         match event {
@@ -99,13 +104,13 @@ mod tests {
     async fn test_event_handler_multiple_events() {
         let mut handler = EventHandler::new();
         let tx = handler.tx();
-        
+
         tx.send(AppEvent::Tick).unwrap();
         tx.send(AppEvent::Tick).unwrap();
-        
+
         let event1 = handler.next().await.unwrap();
         let event2 = handler.next().await.unwrap();
-        
+
         match (event1, event2) {
             (AppEvent::Tick, AppEvent::Tick) => {}
             _ => panic!("Expected two Tick events"),
@@ -116,18 +121,16 @@ mod tests {
     async fn test_event_handler_key_event() {
         let mut handler = EventHandler::new();
         let tx = handler.tx();
-        
+
         let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty());
         tx.send(AppEvent::Key(key)).unwrap();
-        
+
         let event = handler.next().await.unwrap();
         match event {
-            AppEvent::Key(k) => {
-                match k.code {
-                    KeyCode::Char('q') => {}
-                    _ => panic!("Expected 'q' key"),
-                }
-            }
+            AppEvent::Key(k) => match k.code {
+                KeyCode::Char('q') => {}
+                _ => panic!("Expected 'q' key"),
+            },
             _ => panic!("Expected Key event"),
         }
     }
@@ -136,17 +139,16 @@ mod tests {
     async fn test_event_handler_api_events() {
         let mut handler = EventHandler::new();
         let tx = handler.tx();
-        
+
         // Test PokemonListLoaded
-        let summaries = vec![
-            crate::models::pokemon::PokemonSummary {
-                id: 1,
-                name: "bulbasaur".to_string(),
-                types: vec![],
-            },
-        ];
-        tx.send(AppEvent::PokemonListLoaded(summaries.clone())).unwrap();
-        
+        let summaries = vec![crate::models::pokemon::PokemonSummary {
+            id: 1,
+            name: "bulbasaur".to_string(),
+            types: vec![],
+        }];
+        tx.send(AppEvent::PokemonListLoaded(summaries.clone()))
+            .unwrap();
+
         let event = handler.next().await.unwrap();
         match event {
             AppEvent::PokemonListLoaded(list) => {

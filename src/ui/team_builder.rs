@@ -42,19 +42,14 @@ fn draw_team_slots(f: &mut Frame, app: &App, area: Rect) {
         let line = if i < team.members.len() {
             let member = &team.members[i];
             let mut spans = vec![
-                Span::styled(
-                    format!("{}. ", i + 1),
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(format!("{}. ", i + 1), Style::default().fg(Color::DarkGray)),
                 Span::styled(
                     format!("{:<12}", capitalize(&member.pokemon_name)),
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(if selected {
-                            Modifier::BOLD
-                        } else {
-                            Modifier::empty()
-                        }),
+                    Style::default().fg(Color::White).add_modifier(if selected {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
                 ),
             ];
             for t in &member.types {
@@ -82,10 +77,7 @@ fn draw_team_slots(f: &mut Frame, app: &App, area: Rect) {
             Line::from(spans)
         } else {
             Line::from(vec![
-                Span::styled(
-                    format!("{}. ", i + 1),
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(format!("{}. ", i + 1), Style::default().fg(Color::DarkGray)),
                 Span::styled("(empty)", Style::default().fg(Color::Rgb(80, 80, 80))),
             ])
         };
@@ -192,16 +184,17 @@ fn draw_coverage(f: &mut Frame, app: &App, area: Rect) {
 
         // Uncovered types (no super-effective move against)
         let all_types = [
-            "normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison",
-            "ground", "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel",
-            "fairy",
+            "normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground",
+            "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy",
         ];
 
         // Simple effectiveness check based on move types
         let covered: Vec<&str> = all_types
             .iter()
             .filter(|def| {
-                unique_move_types.iter().any(|atk| is_super_effective(atk, def))
+                unique_move_types
+                    .iter()
+                    .any(|atk| is_super_effective(atk, def))
             })
             .copied()
             .collect();
@@ -322,8 +315,7 @@ fn draw_move_picker(f: &mut Frame, app: &App) {
     f.render_widget(block, area);
 
     if app.moves_loading != LoadingState::Loaded {
-        let loading = Paragraph::new("Loading moves...")
-            .style(Style::default().fg(Color::Yellow));
+        let loading = Paragraph::new("Loading moves...").style(Style::default().fg(Color::Yellow));
         f.render_widget(loading, inner);
         return;
     }
