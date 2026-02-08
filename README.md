@@ -2,6 +2,8 @@
 
 A terminal-based Pokédex built with Rust. Browse Gen 1 Pokémon, view colored sprite art, check type matchups, and build teams.
 
+![Pokedex TUI Screenshot](https://github.com/user-attachments/assets/71b67a16-0058-474f-a9a9-363245f46d33)
+
 ## Screens
 
 - **Pokédex** — Scrollable list of 151 Pokémon with search and type labels
