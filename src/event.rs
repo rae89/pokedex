@@ -3,7 +3,7 @@ use crossterm::event::{self, Event as CrosstermEvent, KeyEvent};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-use crate::models::pokemon::{MoveDetail, PokemonDetail, PokemonSummary};
+use crate::models::pokemon::{EvolutionChain, MoveDetail, PokemonDetail, PokemonSummary};
 use crate::models::type_data::TypeInfo;
 
 /// All events the app can receive
@@ -18,6 +18,7 @@ pub enum AppEvent {
     SpriteLoaded(u32, Vec<u8>), // pokemon_id, png bytes
     TypesLoaded(Vec<TypeInfo>),
     MovesLoaded(Vec<MoveDetail>),
+    EvolutionChainLoaded(Box<EvolutionChain>),
     ApiError(String),
 }
 
@@ -156,6 +157,35 @@ mod tests {
                 assert_eq!(list[0].id, 1);
             }
             _ => panic!("Expected PokemonListLoaded event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_event_handler_evolution_chain_loaded() {
+        let mut handler = EventHandler::new();
+        let tx = handler.tx();
+
+        let chain = crate::models::pokemon::EvolutionChain {
+            id: 1,
+            chain: crate::models::pokemon::EvolutionChainLink {
+                species: crate::models::pokemon::NamedResource {
+                    name: "bulbasaur".to_string(),
+                    url: String::new(),
+                },
+                evolution_details: vec![],
+                evolves_to: vec![],
+            },
+        };
+        tx.send(AppEvent::EvolutionChainLoaded(Box::new(chain)))
+            .unwrap();
+
+        let event = handler.next().await.unwrap();
+        match event {
+            AppEvent::EvolutionChainLoaded(chain) => {
+                assert_eq!(chain.id, 1);
+                assert_eq!(chain.chain.species.name, "bulbasaur");
+            }
+            _ => panic!("Expected EvolutionChainLoaded event"),
         }
     }
 }
