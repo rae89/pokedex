@@ -5,6 +5,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use crate::app::{App, LoadingState};
+use crate::models::pokemon::EvolutionChainLink;
 use crate::sprite::renderer::SpriteWidget;
 use crate::ui::type_color;
 
@@ -182,9 +183,65 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         ),
     ]));
 
+    // Evolution chain
+    lines.push(Line::from(""));
+    if let Some(ref chain) = app.evolution_chain {
+        lines.push(Line::from(Span::styled(
+            "Evolution",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
+
+        let paths = flatten_evolution_paths(&chain.chain);
+        let current_name = &detail.name;
+
+        if paths.len() == 1 && paths[0].len() == 1 {
+            // Single-stage Pokemon, no evolutions
+            lines.push(Line::from(Span::styled(
+                "Does not evolve",
+                Style::default().fg(Color::DarkGray),
+            )));
+        } else {
+            for path in &paths {
+                let mut spans: Vec<Span> = Vec::new();
+                for (i, (name, method)) in path.iter().enumerate() {
+                    if i > 0 {
+                        let method_str = method.as_deref().unwrap_or("???");
+                        spans.push(Span::styled(
+                            format!(" → ({}) ", method_str),
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    }
+                    let display_name = capitalize(name);
+                    if name == current_name {
+                        spans.push(Span::styled(
+                            display_name,
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    } else {
+                        spans.push(Span::styled(
+                            display_name,
+                            Style::default().fg(Color::White),
+                        ));
+                    }
+                }
+                lines.push(Line::from(spans));
+            }
+        }
+    } else if app.evolution_chain_loading == LoadingState::Loading {
+        lines.push(Line::from(Span::styled(
+            "Loading evolution chain...",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "[a] Add to team  |  [Esc] Back",
+        "[a] Add to team  |  [\u{2190}\u{2192}] Nav  |  [e/E] Evo  |  [Esc] Back",
         Style::default().fg(Color::DarkGray),
     )));
 
@@ -192,10 +249,414 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(info, info_inner);
 }
 
+/// Flatten the recursive evolution chain into linear paths.
+/// Each path is a Vec of (species_name, evolution_method_description).
+/// The first entry in each path has method=None (base form).
+fn flatten_evolution_paths(link: &EvolutionChainLink) -> Vec<Vec<(String, Option<String>)>> {
+    let mut results = Vec::new();
+    collect_paths(link, &mut Vec::new(), &mut results);
+    results
+}
+
+fn collect_paths(
+    link: &EvolutionChainLink,
+    current: &mut Vec<(String, Option<String>)>,
+    results: &mut Vec<Vec<(String, Option<String>)>>,
+) {
+    let method = if current.is_empty() {
+        None
+    } else {
+        Some(format_evolution_method(link))
+    };
+    current.push((link.species.name.clone(), method));
+
+    if link.evolves_to.is_empty() {
+        results.push(current.clone());
+    } else {
+        for next in &link.evolves_to {
+            collect_paths(next, current, results);
+        }
+    }
+
+    current.pop();
+}
+
+fn format_evolution_method(link: &EvolutionChainLink) -> String {
+    let detail = match link.evolution_details.first() {
+        Some(d) => d,
+        None => return "???".to_string(),
+    };
+
+    let trigger = &detail.trigger.name;
+    match trigger.as_str() {
+        "level-up" => {
+            if let Some(level) = detail.min_level {
+                return format!("Lv. {}", level);
+            }
+            if let Some(happiness) = detail.min_happiness {
+                return format!("Happiness {}", happiness);
+            }
+            if let Some(ref mv) = detail.known_move {
+                return format!("Know {}", capitalize(&mv.name));
+            }
+            if let Some(ref loc) = detail.location {
+                return format!("At {}", capitalize(&loc.name));
+            }
+            if let Some(ref tod) = detail.time_of_day {
+                if !tod.is_empty() {
+                    return format!("Level up ({})", tod);
+                }
+            }
+            "Level up".to_string()
+        }
+        "use-item" => {
+            if let Some(ref item) = detail.item {
+                capitalize(&item.name.replace('-', " "))
+            } else {
+                "Use item".to_string()
+            }
+        }
+        "trade" => {
+            if let Some(ref species) = detail.trade_species {
+                format!("Trade for {}", capitalize(&species.name))
+            } else if let Some(ref item) = detail.held_item {
+                format!("Trade w/ {}", capitalize(&item.name.replace('-', " ")))
+            } else {
+                "Trade".to_string()
+            }
+        }
+        other => capitalize(&other.replace('-', " ")),
+    }
+}
+
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
         None => String::new(),
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::pokemon::{EvolutionDetail, NamedResource};
+
+    fn named(name: &str) -> NamedResource {
+        NamedResource {
+            name: name.to_string(),
+            url: String::new(),
+        }
+    }
+
+    fn level_up_detail(level: u32) -> EvolutionDetail {
+        EvolutionDetail {
+            trigger: named("level-up"),
+            min_level: Some(level),
+            item: None,
+            held_item: None,
+            min_happiness: None,
+            known_move: None,
+            location: None,
+            time_of_day: None,
+            trade_species: None,
+        }
+    }
+
+    fn empty_detail_with_trigger(trigger: &str) -> EvolutionDetail {
+        EvolutionDetail {
+            trigger: named(trigger),
+            min_level: None,
+            item: None,
+            held_item: None,
+            min_happiness: None,
+            known_move: None,
+            location: None,
+            time_of_day: None,
+            trade_species: None,
+        }
+    }
+
+    // -- flatten_evolution_paths tests --
+
+    #[test]
+    fn test_flatten_linear_three_stage_chain() {
+        // Bulbasaur → Ivysaur (Lv. 16) → Venusaur (Lv. 32)
+        let chain = EvolutionChainLink {
+            species: named("bulbasaur"),
+            evolution_details: vec![],
+            evolves_to: vec![EvolutionChainLink {
+                species: named("ivysaur"),
+                evolution_details: vec![level_up_detail(16)],
+                evolves_to: vec![EvolutionChainLink {
+                    species: named("venusaur"),
+                    evolution_details: vec![level_up_detail(32)],
+                    evolves_to: vec![],
+                }],
+            }],
+        };
+
+        let paths = flatten_evolution_paths(&chain);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].len(), 3);
+        assert_eq!(paths[0][0], ("bulbasaur".to_string(), None));
+        assert_eq!(
+            paths[0][1],
+            ("ivysaur".to_string(), Some("Lv. 16".to_string()))
+        );
+        assert_eq!(
+            paths[0][2],
+            ("venusaur".to_string(), Some("Lv. 32".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_flatten_branching_evolution() {
+        // Eevee → Vaporeon (Water Stone) / Jolteon (Thunder Stone)
+        let chain = EvolutionChainLink {
+            species: named("eevee"),
+            evolution_details: vec![],
+            evolves_to: vec![
+                EvolutionChainLink {
+                    species: named("vaporeon"),
+                    evolution_details: vec![EvolutionDetail {
+                        item: Some(named("water-stone")),
+                        ..empty_detail_with_trigger("use-item")
+                    }],
+                    evolves_to: vec![],
+                },
+                EvolutionChainLink {
+                    species: named("jolteon"),
+                    evolution_details: vec![EvolutionDetail {
+                        item: Some(named("thunder-stone")),
+                        ..empty_detail_with_trigger("use-item")
+                    }],
+                    evolves_to: vec![],
+                },
+            ],
+        };
+
+        let paths = flatten_evolution_paths(&chain);
+        assert_eq!(paths.len(), 2);
+        // Each path starts with Eevee
+        assert_eq!(paths[0][0].0, "eevee");
+        assert_eq!(paths[1][0].0, "eevee");
+        // First branch: Vaporeon
+        assert_eq!(paths[0][1].0, "vaporeon");
+        assert_eq!(paths[0][1].1, Some("Water stone".to_string()));
+        // Second branch: Jolteon
+        assert_eq!(paths[1][1].0, "jolteon");
+        assert_eq!(paths[1][1].1, Some("Thunder stone".to_string()));
+    }
+
+    #[test]
+    fn test_flatten_single_stage_pokemon() {
+        // Tauros — does not evolve
+        let chain = EvolutionChainLink {
+            species: named("tauros"),
+            evolution_details: vec![],
+            evolves_to: vec![],
+        };
+
+        let paths = flatten_evolution_paths(&chain);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].len(), 1);
+        assert_eq!(paths[0][0], ("tauros".to_string(), None));
+    }
+
+    #[test]
+    fn test_flatten_two_stage_chain() {
+        // Pikachu → Raichu (Thunder Stone)
+        let chain = EvolutionChainLink {
+            species: named("pichu"),
+            evolution_details: vec![],
+            evolves_to: vec![EvolutionChainLink {
+                species: named("pikachu"),
+                evolution_details: vec![EvolutionDetail {
+                    min_happiness: Some(220),
+                    ..empty_detail_with_trigger("level-up")
+                }],
+                evolves_to: vec![EvolutionChainLink {
+                    species: named("raichu"),
+                    evolution_details: vec![EvolutionDetail {
+                        item: Some(named("thunder-stone")),
+                        ..empty_detail_with_trigger("use-item")
+                    }],
+                    evolves_to: vec![],
+                }],
+            }],
+        };
+
+        let paths = flatten_evolution_paths(&chain);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].len(), 3);
+        assert_eq!(paths[0][0].0, "pichu");
+        assert_eq!(paths[0][1].0, "pikachu");
+        assert_eq!(paths[0][1].1, Some("Happiness 220".to_string()));
+        assert_eq!(paths[0][2].0, "raichu");
+        assert_eq!(paths[0][2].1, Some("Thunder stone".to_string()));
+    }
+
+    // -- format_evolution_method tests --
+
+    #[test]
+    fn test_format_level_up_with_min_level() {
+        let link = EvolutionChainLink {
+            species: named("ivysaur"),
+            evolution_details: vec![level_up_detail(16)],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Lv. 16");
+    }
+
+    #[test]
+    fn test_format_level_up_with_happiness() {
+        let link = EvolutionChainLink {
+            species: named("pikachu"),
+            evolution_details: vec![EvolutionDetail {
+                min_happiness: Some(220),
+                ..empty_detail_with_trigger("level-up")
+            }],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Happiness 220");
+    }
+
+    #[test]
+    fn test_format_level_up_with_known_move() {
+        let link = EvolutionChainLink {
+            species: named("sylveon"),
+            evolution_details: vec![EvolutionDetail {
+                known_move: Some(named("baby-doll-eyes")),
+                ..empty_detail_with_trigger("level-up")
+            }],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Know Baby-doll-eyes");
+    }
+
+    #[test]
+    fn test_format_level_up_with_location() {
+        let link = EvolutionChainLink {
+            species: named("leafeon"),
+            evolution_details: vec![EvolutionDetail {
+                location: Some(named("eterna-forest")),
+                ..empty_detail_with_trigger("level-up")
+            }],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "At Eterna-forest");
+    }
+
+    #[test]
+    fn test_format_level_up_with_time_of_day() {
+        let link = EvolutionChainLink {
+            species: named("espeon"),
+            evolution_details: vec![EvolutionDetail {
+                time_of_day: Some("day".to_string()),
+                ..empty_detail_with_trigger("level-up")
+            }],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Level up (day)");
+    }
+
+    #[test]
+    fn test_format_level_up_plain() {
+        let link = EvolutionChainLink {
+            species: named("something"),
+            evolution_details: vec![empty_detail_with_trigger("level-up")],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Level up");
+    }
+
+    #[test]
+    fn test_format_use_item() {
+        let link = EvolutionChainLink {
+            species: named("vaporeon"),
+            evolution_details: vec![EvolutionDetail {
+                item: Some(named("water-stone")),
+                ..empty_detail_with_trigger("use-item")
+            }],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Water stone");
+    }
+
+    #[test]
+    fn test_format_use_item_no_item() {
+        let link = EvolutionChainLink {
+            species: named("something"),
+            evolution_details: vec![empty_detail_with_trigger("use-item")],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Use item");
+    }
+
+    #[test]
+    fn test_format_trade() {
+        let link = EvolutionChainLink {
+            species: named("machamp"),
+            evolution_details: vec![empty_detail_with_trigger("trade")],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Trade");
+    }
+
+    #[test]
+    fn test_format_trade_with_species() {
+        let link = EvolutionChainLink {
+            species: named("escavalier"),
+            evolution_details: vec![EvolutionDetail {
+                trade_species: Some(named("shelmet")),
+                ..empty_detail_with_trigger("trade")
+            }],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Trade for Shelmet");
+    }
+
+    #[test]
+    fn test_format_trade_with_held_item() {
+        let link = EvolutionChainLink {
+            species: named("steelix"),
+            evolution_details: vec![EvolutionDetail {
+                held_item: Some(named("metal-coat")),
+                ..empty_detail_with_trigger("trade")
+            }],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Trade w/ Metal coat");
+    }
+
+    #[test]
+    fn test_format_no_evolution_details() {
+        let link = EvolutionChainLink {
+            species: named("something"),
+            evolution_details: vec![],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "???");
+    }
+
+    #[test]
+    fn test_format_other_trigger() {
+        let link = EvolutionChainLink {
+            species: named("something"),
+            evolution_details: vec![empty_detail_with_trigger("shed")],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Shed");
+    }
+
+    #[test]
+    fn test_format_hyphenated_trigger() {
+        let link = EvolutionChainLink {
+            species: named("something"),
+            evolution_details: vec![empty_detail_with_trigger("spin-type")],
+            evolves_to: vec![],
+        };
+        assert_eq!(format_evolution_method(&link), "Spin type");
     }
 }

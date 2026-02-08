@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 
 use crate::api::client::ApiClient;
 use crate::event::AppEvent;
-use crate::models::pokemon::{MoveDetail, PokemonDetail, PokemonSummary};
+use crate::models::pokemon::{EvolutionChain, MoveDetail, PokemonDetail, PokemonSummary};
 use crate::models::team::{Team, TeamData, TeamMember, TeamMove};
 use crate::models::type_data::TypeInfo;
 
@@ -96,6 +96,8 @@ pub struct App {
     pub sprite_bytes: Option<Vec<u8>>,
     pub detail_pokemon_id: Option<u32>,
     pub detail_list_index: Option<usize>, // index in filtered list when viewing detail
+    pub evolution_chain: Option<Box<EvolutionChain>>,
+    pub evolution_chain_loading: LoadingState,
 
     // Type chart
     pub type_infos: Vec<TypeInfo>,
@@ -135,6 +137,8 @@ impl App {
             sprite_bytes: None,
             detail_pokemon_id: None,
             detail_list_index: None,
+            evolution_chain: None,
+            evolution_chain_loading: LoadingState::Idle,
             type_infos: Vec::new(),
             type_chart_loading: LoadingState::Idle,
             type_chart_scroll_x: 0,
@@ -171,6 +175,8 @@ impl App {
             sprite_bytes: None,
             detail_pokemon_id: None,
             detail_list_index: None,
+            evolution_chain: None,
+            evolution_chain_loading: LoadingState::Idle,
             type_infos: Vec::new(),
             type_chart_loading: LoadingState::Idle,
             type_chart_scroll_x: 0,
@@ -292,6 +298,8 @@ impl App {
         self.detail_list_index = filtered.iter().position(|p| p.id == id);
         self.detail = None;
         self.sprite_bytes = None;
+        self.evolution_chain = None;
+        self.evolution_chain_loading = LoadingState::Idle;
         self.detail_pokemon_id = Some(id);
         self.detail_loading = LoadingState::Loading;
         let tx = self.tx.clone();
@@ -309,6 +317,48 @@ impl App {
                 }
                 Err(e) => {
                     let _ = tx.send(AppEvent::ApiError(format!("Failed to load detail: {}", e)));
+                }
+            }
+        });
+    }
+
+    /// Flatten the evolution chain into a list of unique (name, pokemon_id) pairs in depth-first order.
+    pub fn evolution_chain_species(&self) -> Vec<(String, u32)> {
+        let chain = match &self.evolution_chain {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+        let mut species = Vec::new();
+        Self::collect_chain_species(&chain.chain, &mut species);
+        species
+    }
+
+    fn collect_chain_species(
+        link: &crate::models::pokemon::EvolutionChainLink,
+        result: &mut Vec<(String, u32)>,
+    ) {
+        if let Some(id) = extract_id_from_url(&link.species.url) {
+            if !result.iter().any(|(_, existing_id)| *existing_id == id) {
+                result.push((link.species.name.clone(), id));
+            }
+        }
+        for next in &link.evolves_to {
+            Self::collect_chain_species(next, result);
+        }
+    }
+
+    fn load_evolution_chain(&mut self, id: u32) {
+        self.evolution_chain = None;
+        self.evolution_chain_loading = LoadingState::Loading;
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let client = ApiClient::new();
+            if let Ok(species) = client.fetch_pokemon_species(&id.to_string()).await {
+                let chain_id = extract_id_from_url(&species.evolution_chain.url);
+                if let Some(chain_id) = chain_id {
+                    if let Ok(chain) = client.fetch_evolution_chain(chain_id).await {
+                        let _ = tx.send(AppEvent::EvolutionChainLoaded(Box::new(chain)));
+                    }
                 }
             }
         });
@@ -390,8 +440,10 @@ impl App {
                 }
             }
             AppEvent::PokemonDetailLoaded(detail) => {
+                let id = detail.id;
                 self.detail = Some(detail);
                 self.detail_loading = LoadingState::Loaded;
+                self.load_evolution_chain(id);
             }
             AppEvent::SpriteLoaded(id, bytes) => {
                 if self.detail_pokemon_id == Some(id) {
@@ -405,6 +457,10 @@ impl App {
             AppEvent::MovesLoaded(moves) => {
                 self.available_moves = moves;
                 self.moves_loading = LoadingState::Loaded;
+            }
+            AppEvent::EvolutionChainLoaded(chain) => {
+                self.evolution_chain = Some(chain);
+                self.evolution_chain_loading = LoadingState::Loaded;
             }
             AppEvent::ApiError(msg) => {
                 self.error_message = Some(msg);
@@ -613,8 +669,38 @@ impl App {
                     }
                 }
             }
+            KeyCode::Char('e') => {
+                // Navigate to next species in evolution chain
+                self.navigate_evolution_chain(true);
+            }
+            KeyCode::Char('E') => {
+                // Navigate to previous species in evolution chain
+                self.navigate_evolution_chain(false);
+            }
             _ => {}
         }
+    }
+
+    fn navigate_evolution_chain(&mut self, forward: bool) {
+        let current_id = match self.detail_pokemon_id {
+            Some(id) => id,
+            None => return,
+        };
+        let species = self.evolution_chain_species();
+        if species.len() <= 1 {
+            return;
+        }
+        let current_pos = match species.iter().position(|(_, id)| *id == current_id) {
+            Some(pos) => pos,
+            None => return,
+        };
+        let next_pos = if forward {
+            (current_pos + 1) % species.len()
+        } else {
+            (current_pos + species.len() - 1) % species.len()
+        };
+        let next_id = species[next_pos].1;
+        self.load_detail(next_id);
     }
 
     fn handle_type_chart_key(&mut self, key: KeyEvent) {
@@ -949,6 +1035,8 @@ mod tests {
         assert!(app.sprite_bytes.is_none());
         assert_eq!(app.detail_pokemon_id, None);
         assert_eq!(app.detail_list_index, None);
+        assert!(app.evolution_chain.is_none());
+        assert_eq!(app.evolution_chain_loading, LoadingState::Idle);
         assert!(app.type_infos.is_empty());
         assert_eq!(app.type_chart_loading, LoadingState::Idle);
         assert_eq!(app.type_chart_scroll_x, 0);
@@ -1455,5 +1543,364 @@ mod tests {
         // Note: load_detail is async, so we'll check that the index is set correctly
         // when the detail is actually loaded. For now, we verify the screen changed.
         assert_eq!(app.screen, Screen::PokemonDetail);
+    }
+
+    #[test]
+    fn test_handle_evolution_chain_loaded_event() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        assert!(app.evolution_chain.is_none());
+        assert_eq!(app.evolution_chain_loading, LoadingState::Idle);
+
+        let chain = crate::models::pokemon::EvolutionChain {
+            id: 1,
+            chain: crate::models::pokemon::EvolutionChainLink {
+                species: crate::models::pokemon::NamedResource {
+                    name: "bulbasaur".to_string(),
+                    url: String::new(),
+                },
+                evolution_details: vec![],
+                evolves_to: vec![crate::models::pokemon::EvolutionChainLink {
+                    species: crate::models::pokemon::NamedResource {
+                        name: "ivysaur".to_string(),
+                        url: String::new(),
+                    },
+                    evolution_details: vec![crate::models::pokemon::EvolutionDetail {
+                        trigger: crate::models::pokemon::NamedResource {
+                            name: "level-up".to_string(),
+                            url: String::new(),
+                        },
+                        min_level: Some(16),
+                        item: None,
+                        held_item: None,
+                        min_happiness: None,
+                        known_move: None,
+                        location: None,
+                        time_of_day: None,
+                        trade_species: None,
+                    }],
+                    evolves_to: vec![],
+                }],
+            },
+        };
+
+        app.handle_event(AppEvent::EvolutionChainLoaded(Box::new(chain)));
+
+        assert!(app.evolution_chain.is_some());
+        assert_eq!(app.evolution_chain_loading, LoadingState::Loaded);
+        let chain = app.evolution_chain.as_ref().unwrap();
+        assert_eq!(chain.id, 1);
+        assert_eq!(chain.chain.species.name, "bulbasaur");
+        assert_eq!(chain.chain.evolves_to.len(), 1);
+        assert_eq!(chain.chain.evolves_to[0].species.name, "ivysaur");
+    }
+
+    #[tokio::test]
+    async fn test_load_detail_resets_evolution_chain() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        // Set up an existing evolution chain
+        app.evolution_chain = Some(Box::new(crate::models::pokemon::EvolutionChain {
+            id: 1,
+            chain: crate::models::pokemon::EvolutionChainLink {
+                species: crate::models::pokemon::NamedResource {
+                    name: "bulbasaur".to_string(),
+                    url: String::new(),
+                },
+                evolution_details: vec![],
+                evolves_to: vec![],
+            },
+        }));
+        app.evolution_chain_loading = LoadingState::Loaded;
+
+        // Set up Pokemon list so load_detail can find the index
+        app.pokemon_list = vec![PokemonSummary {
+            id: 25,
+            name: "pikachu".to_string(),
+            types: vec![],
+        }];
+
+        // Load a different Pokemon's detail
+        app.load_detail(25);
+
+        // Evolution chain should be reset; loading happens after detail arrives
+        assert!(app.evolution_chain.is_none());
+        assert_eq!(app.evolution_chain_loading, LoadingState::Idle);
+    }
+
+    #[test]
+    fn test_api_error_does_not_affect_evolution_loading() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        // Set evolution chain to loaded state
+        app.evolution_chain_loading = LoadingState::Loaded;
+        app.evolution_chain = Some(Box::new(crate::models::pokemon::EvolutionChain {
+            id: 1,
+            chain: crate::models::pokemon::EvolutionChainLink {
+                species: crate::models::pokemon::NamedResource {
+                    name: "bulbasaur".to_string(),
+                    url: String::new(),
+                },
+                evolution_details: vec![],
+                evolves_to: vec![],
+            },
+        }));
+
+        // API error should set other loading states to Error but keep evolution_chain data
+        app.handle_event(AppEvent::ApiError("some error".to_string()));
+
+        // The chain data should still be there (only loading states change)
+        assert!(app.evolution_chain.is_some());
+    }
+
+    fn make_chain(species: Vec<(&str, &str)>) -> crate::models::pokemon::EvolutionChain {
+        // Build a linear chain from a list of (name, species_url) pairs
+        fn build_link(
+            species: &[(&str, &str)],
+        ) -> crate::models::pokemon::EvolutionChainLink {
+            let (name, url) = species[0];
+            crate::models::pokemon::EvolutionChainLink {
+                species: crate::models::pokemon::NamedResource {
+                    name: name.to_string(),
+                    url: url.to_string(),
+                },
+                evolution_details: vec![],
+                evolves_to: if species.len() > 1 {
+                    vec![build_link(&species[1..])]
+                } else {
+                    vec![]
+                },
+            }
+        }
+        crate::models::pokemon::EvolutionChain {
+            id: 1,
+            chain: build_link(&species),
+        }
+    }
+
+    #[test]
+    fn test_evolution_chain_species_linear() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        app.evolution_chain = Some(Box::new(make_chain(vec![
+            ("bulbasaur", "https://pokeapi.co/api/v2/pokemon-species/1/"),
+            ("ivysaur", "https://pokeapi.co/api/v2/pokemon-species/2/"),
+            ("venusaur", "https://pokeapi.co/api/v2/pokemon-species/3/"),
+        ])));
+
+        let species = app.evolution_chain_species();
+        assert_eq!(species.len(), 3);
+        assert_eq!(species[0], ("bulbasaur".to_string(), 1));
+        assert_eq!(species[1], ("ivysaur".to_string(), 2));
+        assert_eq!(species[2], ("venusaur".to_string(), 3));
+    }
+
+    #[test]
+    fn test_evolution_chain_species_branching() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        // Eevee → Vaporeon / Jolteon
+        app.evolution_chain = Some(Box::new(crate::models::pokemon::EvolutionChain {
+            id: 67,
+            chain: crate::models::pokemon::EvolutionChainLink {
+                species: crate::models::pokemon::NamedResource {
+                    name: "eevee".to_string(),
+                    url: "https://pokeapi.co/api/v2/pokemon-species/133/".to_string(),
+                },
+                evolution_details: vec![],
+                evolves_to: vec![
+                    crate::models::pokemon::EvolutionChainLink {
+                        species: crate::models::pokemon::NamedResource {
+                            name: "vaporeon".to_string(),
+                            url: "https://pokeapi.co/api/v2/pokemon-species/134/".to_string(),
+                        },
+                        evolution_details: vec![],
+                        evolves_to: vec![],
+                    },
+                    crate::models::pokemon::EvolutionChainLink {
+                        species: crate::models::pokemon::NamedResource {
+                            name: "jolteon".to_string(),
+                            url: "https://pokeapi.co/api/v2/pokemon-species/135/".to_string(),
+                        },
+                        evolution_details: vec![],
+                        evolves_to: vec![],
+                    },
+                ],
+            },
+        }));
+
+        let species = app.evolution_chain_species();
+        assert_eq!(species.len(), 3);
+        assert_eq!(species[0], ("eevee".to_string(), 133));
+        assert_eq!(species[1], ("vaporeon".to_string(), 134));
+        assert_eq!(species[2], ("jolteon".to_string(), 135));
+    }
+
+    #[test]
+    fn test_evolution_chain_species_single_stage() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        app.evolution_chain = Some(Box::new(make_chain(vec![(
+            "tauros",
+            "https://pokeapi.co/api/v2/pokemon-species/128/",
+        )])));
+
+        let species = app.evolution_chain_species();
+        assert_eq!(species.len(), 1);
+        assert_eq!(species[0], ("tauros".to_string(), 128));
+    }
+
+    #[test]
+    fn test_evolution_chain_species_none() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let app = App::new(tx);
+
+        let species = app.evolution_chain_species();
+        assert!(species.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_evolution_nav_forward() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        app.screen = Screen::PokemonDetail;
+        app.detail_pokemon_id = Some(1);
+        app.detail = Some(Box::new(PokemonDetail {
+            id: 1,
+            name: "bulbasaur".to_string(),
+            height: 7,
+            weight: 69,
+            types: vec![],
+            stats: vec![],
+            abilities: vec![],
+            moves: vec![],
+            sprites: crate::models::pokemon::Sprites {
+                front_default: None,
+            },
+        }));
+        app.detail_loading = LoadingState::Loaded;
+
+        app.evolution_chain = Some(Box::new(make_chain(vec![
+            ("bulbasaur", "https://pokeapi.co/api/v2/pokemon-species/1/"),
+            ("ivysaur", "https://pokeapi.co/api/v2/pokemon-species/2/"),
+            ("venusaur", "https://pokeapi.co/api/v2/pokemon-species/3/"),
+        ])));
+
+        // Press 'e' to navigate forward
+        let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty());
+        app.handle_key(key);
+
+        assert_eq!(app.detail_pokemon_id, Some(2));
+    }
+
+    #[tokio::test]
+    async fn test_evolution_nav_backward() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        app.screen = Screen::PokemonDetail;
+        app.detail_pokemon_id = Some(1);
+        app.detail = Some(Box::new(PokemonDetail {
+            id: 1,
+            name: "bulbasaur".to_string(),
+            height: 7,
+            weight: 69,
+            types: vec![],
+            stats: vec![],
+            abilities: vec![],
+            moves: vec![],
+            sprites: crate::models::pokemon::Sprites {
+                front_default: None,
+            },
+        }));
+        app.detail_loading = LoadingState::Loaded;
+
+        app.evolution_chain = Some(Box::new(make_chain(vec![
+            ("bulbasaur", "https://pokeapi.co/api/v2/pokemon-species/1/"),
+            ("ivysaur", "https://pokeapi.co/api/v2/pokemon-species/2/"),
+            ("venusaur", "https://pokeapi.co/api/v2/pokemon-species/3/"),
+        ])));
+
+        // Press 'E' to navigate backward (wraps to venusaur)
+        let key = KeyEvent::new(KeyCode::Char('E'), KeyModifiers::SHIFT);
+        app.handle_key(key);
+
+        assert_eq!(app.detail_pokemon_id, Some(3));
+    }
+
+    #[tokio::test]
+    async fn test_evolution_nav_wraps_forward() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        app.screen = Screen::PokemonDetail;
+        app.detail_pokemon_id = Some(3); // venusaur (last in chain)
+        app.detail = Some(Box::new(PokemonDetail {
+            id: 3,
+            name: "venusaur".to_string(),
+            height: 20,
+            weight: 1000,
+            types: vec![],
+            stats: vec![],
+            abilities: vec![],
+            moves: vec![],
+            sprites: crate::models::pokemon::Sprites {
+                front_default: None,
+            },
+        }));
+        app.detail_loading = LoadingState::Loaded;
+
+        app.evolution_chain = Some(Box::new(make_chain(vec![
+            ("bulbasaur", "https://pokeapi.co/api/v2/pokemon-species/1/"),
+            ("ivysaur", "https://pokeapi.co/api/v2/pokemon-species/2/"),
+            ("venusaur", "https://pokeapi.co/api/v2/pokemon-species/3/"),
+        ])));
+
+        // Press 'e' to wrap forward to bulbasaur
+        let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty());
+        app.handle_key(key);
+
+        assert_eq!(app.detail_pokemon_id, Some(1));
+    }
+
+    #[test]
+    fn test_evolution_nav_single_stage_does_nothing() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx);
+
+        app.screen = Screen::PokemonDetail;
+        app.detail_pokemon_id = Some(128);
+        app.detail = Some(Box::new(PokemonDetail {
+            id: 128,
+            name: "tauros".to_string(),
+            height: 14,
+            weight: 884,
+            types: vec![],
+            stats: vec![],
+            abilities: vec![],
+            moves: vec![],
+            sprites: crate::models::pokemon::Sprites {
+                front_default: None,
+            },
+        }));
+        app.detail_loading = LoadingState::Loaded;
+
+        app.evolution_chain = Some(Box::new(make_chain(vec![(
+            "tauros",
+            "https://pokeapi.co/api/v2/pokemon-species/128/",
+        )])));
+
+        // Press 'e' — should do nothing for single-stage Pokemon
+        let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty());
+        app.handle_key(key);
+
+        assert_eq!(app.detail_pokemon_id, Some(128));
     }
 }
