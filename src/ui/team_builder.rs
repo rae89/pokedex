@@ -440,4 +440,3 @@ fn is_super_effective(atk: &str, def: &str) -> bool {
             | ("fairy", "dark")
     )
 }
-

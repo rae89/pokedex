@@ -1,7 +1,9 @@
 use anyhow::Result;
 
 use super::client::ApiClient;
-use crate::models::pokemon::{EvolutionChain, MoveDetail, PokemonDetail, PokemonListResponse, PokemonSpecies};
+use crate::models::pokemon::{
+    EvolutionChain, MoveDetail, PokemonDetail, PokemonListResponse, PokemonSpecies,
+};
 use crate::models::type_data::TypeInfo;
 
 const BASE_URL: &str = "https://pokeapi.co/api/v2";

@@ -126,10 +126,7 @@ impl App {
         Self::new_with_team_data(tx, TeamData::load())
     }
 
-    fn new_with_team_data(
-        tx: mpsc::UnboundedSender<AppEvent>,
-        team_data: TeamData,
-    ) -> Self {
+    fn new_with_team_data(tx: mpsc::UnboundedSender<AppEvent>, team_data: TeamData) -> Self {
         Self {
             running: true,
             screen: Screen::PokemonList,
@@ -1336,9 +1333,7 @@ mod tests {
 
     fn make_chain(species: Vec<(&str, &str)>) -> crate::models::pokemon::EvolutionChain {
         // Build a linear chain from a list of (name, species_url) pairs
-        fn build_link(
-            species: &[(&str, &str)],
-        ) -> crate::models::pokemon::EvolutionChainLink {
+        fn build_link(species: &[(&str, &str)]) -> crate::models::pokemon::EvolutionChainLink {
             let (name, url) = species[0];
             crate::models::pokemon::EvolutionChainLink {
                 species: crate::models::pokemon::NamedResource {

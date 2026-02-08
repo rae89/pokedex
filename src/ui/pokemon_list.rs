@@ -113,4 +113,3 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 }
-

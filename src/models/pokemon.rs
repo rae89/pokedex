@@ -302,9 +302,18 @@ mod tests {
         assert_eq!(chain.chain.species.name, "bulbasaur");
         assert_eq!(chain.chain.evolves_to.len(), 1);
         assert_eq!(chain.chain.evolves_to[0].species.name, "ivysaur");
-        assert_eq!(chain.chain.evolves_to[0].evolution_details[0].min_level, Some(16));
-        assert_eq!(chain.chain.evolves_to[0].evolves_to[0].species.name, "venusaur");
-        assert_eq!(chain.chain.evolves_to[0].evolves_to[0].evolution_details[0].min_level, Some(32));
+        assert_eq!(
+            chain.chain.evolves_to[0].evolution_details[0].min_level,
+            Some(16)
+        );
+        assert_eq!(
+            chain.chain.evolves_to[0].evolves_to[0].species.name,
+            "venusaur"
+        );
+        assert_eq!(
+            chain.chain.evolves_to[0].evolves_to[0].evolution_details[0].min_level,
+            Some(32)
+        );
     }
 
     #[test]
@@ -358,9 +367,23 @@ mod tests {
         assert_eq!(chain.chain.species.name, "eevee");
         assert_eq!(chain.chain.evolves_to.len(), 2);
         assert_eq!(chain.chain.evolves_to[0].species.name, "vaporeon");
-        assert_eq!(chain.chain.evolves_to[0].evolution_details[0].item.as_ref().unwrap().name, "water-stone");
+        assert_eq!(
+            chain.chain.evolves_to[0].evolution_details[0]
+                .item
+                .as_ref()
+                .unwrap()
+                .name,
+            "water-stone"
+        );
         assert_eq!(chain.chain.evolves_to[1].species.name, "jolteon");
-        assert_eq!(chain.chain.evolves_to[1].evolution_details[0].item.as_ref().unwrap().name, "thunder-stone");
+        assert_eq!(
+            chain.chain.evolves_to[1].evolution_details[0]
+                .item
+                .as_ref()
+                .unwrap()
+                .name,
+            "thunder-stone"
+        );
     }
 
     #[test]
