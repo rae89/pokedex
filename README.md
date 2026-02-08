@@ -60,6 +60,16 @@ cargo install cargo-tarpaulin
 cargo tarpaulin --out Html --output-dir coverage/
 ```
 
+## Releasing
+
+To publish a new release, trigger the **Release** workflow from the GitHub Actions tab:
+
+1. Go to **Actions → Release → Run workflow**
+2. Enter the version number (e.g. `1.0.0`)
+3. Click **Run workflow**
+
+This builds a universal macOS binary (Apple Silicon + Intel), tags the commit as `v{version}`, and creates a GitHub Release with `pokedex-macos.tar.gz` attached.
+
 ## Controls
 
 | Key | Action |
