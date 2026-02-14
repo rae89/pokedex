@@ -94,6 +94,10 @@ This builds a universal macOS binary (Apple Silicon + Intel), tags the commit as
 - Sprites are rendered as colored Unicode half-block characters (`▀▄█`) with true-color RGB
 - Teams are saved to `~/Library/Caches/pokemon-tui/teams.json` (macOS)
 
+## Roadmap
+
+See our [GitHub Milestones](https://github.com/rae89/pokedex/milestones) for planned features and progress.
+
 ## Tech Stack
 
 Rust, Ratatui, Crossterm, Tokio, Reqwest, Serde, image
