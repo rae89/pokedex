@@ -1,3 +1,4 @@
+pub mod battle_simulator;
 pub mod pokemon_detail;
 pub mod pokemon_list;
 pub mod team_builder;
@@ -21,6 +22,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         Screen::PokemonDetail => pokemon_detail::draw(f, app, chunks[1]),
         Screen::TypeChart => type_chart::draw(f, app, chunks[1]),
         Screen::TeamBuilder => team_builder::draw(f, app, chunks[1]),
+        Screen::BattleSimulator => battle_simulator::draw(f, app, chunks[1]),
     }
 
     // Error overlay
