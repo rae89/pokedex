@@ -39,7 +39,6 @@ Lower the barrier for contributors and add extensibility.
 
 - CONTRIBUTING.md with development guidelines
 - GitHub issue templates (bug report, feature request)
-- Battle Simulator (properly scoped, with real stats and time-driven animation)
 - Theming and configuration file support
 - Plugin or extension points
 
