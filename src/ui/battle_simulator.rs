@@ -11,25 +11,74 @@ use crate::ui::type_color;
 pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let battle = &app.battle;
 
+    // Reserve bottom row for hints bar
+    let chunks = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(area);
+    let main_area = chunks[0];
+    let hints_area = chunks[1];
+
     match battle.phase {
         BattlePhase::SelectPokemon1 | BattlePhase::SelectPokemon2 => {
-            draw_pokemon_picker(f, app, area);
+            draw_pokemon_picker(f, app, main_area);
         }
         BattlePhase::SelectMove | BattlePhase::Animating | BattlePhase::Finished => {
-            draw_battle_arena(f, app, area);
+            draw_battle_arena(f, app, main_area);
         }
     }
+
+    // Draw contextual hints bar
+    let hints = match battle.phase {
+        BattlePhase::SelectPokemon1 | BattlePhase::SelectPokemon2 => {
+            if battle.picker_search_mode {
+                "Type to search | Enter Confirm | Esc Cancel"
+            } else {
+                "↑↓ Navigate | Enter Select | / Search | Esc Back"
+            }
+        }
+        BattlePhase::SelectMove => "↑↓ Pick move | Enter Attack | Esc Quit battle",
+        BattlePhase::Animating => "Waiting...",
+        BattlePhase::Finished => "R Rematch | Esc Back to picker",
+    };
+    let hints_widget = Paragraph::new(Line::from(vec![
+        Span::styled(" 💡 ", Style::default().fg(Color::Yellow)),
+        Span::styled(hints, Style::default().fg(Color::DarkGray)),
+    ]));
+    f.render_widget(hints_widget, hints_area);
 }
 
 fn draw_pokemon_picker(f: &mut Frame, app: &App, area: Rect) {
     let battle = &app.battle;
-    let title = if battle.phase == BattlePhase::SelectPokemon1 {
-        " ⚔ Pick Player 1's Pokémon "
+    let (step_label, title) = if battle.phase == BattlePhase::SelectPokemon1 {
+        ("Step 1/2", " ⚔ Choose YOUR Pokémon ")
     } else {
-        " ⚔ Pick Player 2's Pokémon (Opponent) "
+        ("Step 2/2", " ⚔ Choose OPPONENT ")
     };
 
-    let chunks = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area);
+    let chunks = Layout::vertical([
+        Constraint::Length(1), // Step indicator
+        Constraint::Length(3), // Search bar
+        Constraint::Min(0),   // Pokemon list
+    ])
+    .split(area);
+
+    // Step progress indicator
+    let step_bar = Paragraph::new(Line::from(vec![
+        Span::styled(
+            format!(" {} ", step_label),
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            if battle.phase == BattlePhase::SelectPokemon1 {
+                " ● ○  Choose YOUR Pokémon"
+            } else {
+                " ● ●  Choose OPPONENT"
+            },
+            Style::default().fg(Color::Yellow),
+        ),
+    ]));
+    f.render_widget(step_bar, chunks[0]);
 
     // Search bar
     let search_text = if battle.picker_search_mode {
@@ -45,7 +94,7 @@ fn draw_pokemon_picker(f: &mut Frame, app: &App, area: Rect) {
             .title(title)
             .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
     );
-    f.render_widget(search, chunks[0]);
+    f.render_widget(search, chunks[1]);
 
     // Pokemon list
     let list_data = app.battle_picker_list();
@@ -90,23 +139,58 @@ fn draw_pokemon_picker(f: &mut Frame, app: &App, area: Rect) {
             .title(" Pokémon List ")
             .border_style(Style::default().fg(Color::DarkGray)),
     );
-    f.render_widget(list, chunks[1]);
+    f.render_widget(list, chunks[2]);
 }
 
 fn draw_battle_arena(f: &mut Frame, app: &App, area: Rect) {
     let battle = &app.battle;
 
-    // Layout: [P1 info | P2 info] on top, [moves | battle log] on bottom
+    // Layout: [P1 info | P2 info] on top, [status banner], [moves | battle log] on bottom
     let main_chunks =
-        Layout::vertical([Constraint::Length(8), Constraint::Min(0)]).split(area);
+        Layout::vertical([Constraint::Length(8), Constraint::Length(1), Constraint::Min(0)])
+            .split(area);
 
     let top_chunks =
         Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(main_chunks[0]);
 
+    // Status banner
+    let (banner_text, banner_color) = match battle.phase {
+        BattlePhase::SelectMove => ("⚔ YOUR TURN — Choose a move!", Color::Yellow),
+        BattlePhase::Animating => ("⏳ Battle in progress...", Color::Cyan),
+        BattlePhase::Finished => {
+            let winner_name = if battle.winner == Some(1) {
+                battle.pokemon1.as_ref().map(|p| p.name.as_str()).unwrap_or("Player 1")
+            } else {
+                battle.pokemon2.as_ref().map(|p| p.name.as_str()).unwrap_or("Opponent")
+            };
+            // Leak not ideal but this is a UI label rebuilt each frame
+            // Use a local string and convert
+            let _ = winner_name; // suppress unused
+            ("🏆 BATTLE OVER", Color::Green)
+        }
+        _ => ("", Color::Reset),
+    };
+    // For Finished, build dynamic string
+    let banner_line = if battle.phase == BattlePhase::Finished {
+        let winner_name = if battle.winner == Some(1) {
+            battle.pokemon1.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| "Player 1".into())
+        } else {
+            battle.pokemon2.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| "Opponent".into())
+        };
+        format!("🏆 BATTLE OVER — {} wins!", winner_name)
+    } else {
+        banner_text.to_string()
+    };
+    let banner = Paragraph::new(Line::from(Span::styled(
+        format!(" {} ", banner_line),
+        Style::default().fg(Color::Black).bg(banner_color).add_modifier(Modifier::BOLD),
+    )));
+    f.render_widget(banner, main_chunks[1]);
+
     let bottom_chunks =
         Layout::horizontal([Constraint::Percentage(35), Constraint::Percentage(65)])
-            .split(main_chunks[1]);
+            .split(main_chunks[2]);
 
     // Draw Pokémon panels
     if let Some(ref p1) = battle.pokemon1 {
@@ -234,10 +318,20 @@ fn draw_move_panel(f: &mut Frame, app: &App, area: Rect) {
                 .fg(type_color(&m.move_type))
                 .add_modifier(Modifier::BOLD);
 
+            let category_icon = if m.is_special { "✦" } else { "⚔" };
+            let category_label = if m.is_special { "Spc" } else { "Phy" };
+
             ListItem::new(Line::from(vec![
                 Span::raw(format!(" {} ", arrow)),
                 Span::styled(format!("{:<14}", m.name), style),
-                Span::styled(format!(" {:>8} ", m.move_type.to_uppercase()), type_style),
+                Span::raw(" "),
+                Span::styled(format!("{:>8}", m.move_type.to_uppercase()), type_style),
+                Span::raw("  "),
+                Span::styled(
+                    format!("{}{}", category_icon, category_label),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::raw("  "),
                 Span::styled(format!("PWR:{}", m.power), Style::default().fg(Color::White)),
             ]))
         })
@@ -265,7 +359,15 @@ fn draw_battle_log(f: &mut Frame, app: &App, area: Rect) {
     // Show last N log entries that fit
     let max_lines = area.height.saturating_sub(2) as usize;
     let start = battle.log.len().saturating_sub(max_lines);
-    let visible: Vec<Line> = battle.log[start..]
+    let has_more_above = start > 0;
+    let mut visible: Vec<Line> = Vec::new();
+    if has_more_above {
+        visible.push(Line::styled(
+            " ▲ more above ▲",
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+        ));
+    }
+    let log_lines: Vec<Line> = battle.log[start..]
         .iter()
         .map(|entry| {
             let style = if entry.text.contains("super effective") {
@@ -288,6 +390,7 @@ fn draw_battle_log(f: &mut Frame, app: &App, area: Rect) {
             Line::styled(format!(" {}", entry.text), style)
         })
         .collect();
+    visible.extend(log_lines);
 
     let log = Paragraph::new(visible)
         .block(

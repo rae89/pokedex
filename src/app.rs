@@ -793,6 +793,18 @@ impl App {
                                 self.battle.phase = BattlePhase::SelectMove;
                                 self.battle.selected_move = 0;
                                 self.battle.turn = 1;
+                                // VS display before first turn
+                                let p1_name = self.battle.pokemon1.as_ref().unwrap().name.clone();
+                                let p2_name = self.battle.pokemon2.as_ref().unwrap().name.clone();
+                                self.battle.log.push(BattleLogEntry {
+                                    text: "══════════════════════".into(),
+                                });
+                                self.battle.log.push(BattleLogEntry {
+                                    text: format!("  {} ⚔ VS ⚔ {}", p1_name, p2_name),
+                                });
+                                self.battle.log.push(BattleLogEntry {
+                                    text: "══════════════════════".into(),
+                                });
                                 self.battle.log.push(BattleLogEntry {
                                     text: "Battle start! Choose your move.".into(),
                                 });
