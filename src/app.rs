@@ -3,6 +3,9 @@ use tokio::sync::mpsc;
 
 use crate::api::client::ApiClient;
 use crate::event::AppEvent;
+use crate::models::battle::{
+    self, BattleMove, BattlePhase, BattlePokemon, BattleState, BattleLogEntry,
+};
 use crate::models::pokemon::{MoveDetail, PokemonDetail, PokemonSummary};
 use crate::models::team::{Team, TeamData, TeamMember, TeamMove};
 use crate::models::type_data::TypeInfo;
@@ -33,6 +36,7 @@ pub enum Screen {
     PokemonDetail,
     TypeChart,
     TeamBuilder,
+    BattleSimulator,
 }
 
 impl Screen {
@@ -42,6 +46,7 @@ impl Screen {
             Screen::PokemonDetail,
             Screen::TypeChart,
             Screen::TeamBuilder,
+            Screen::BattleSimulator,
         ]
     }
 
@@ -51,6 +56,7 @@ impl Screen {
             Screen::PokemonDetail => "Detail",
             Screen::TypeChart => "Type Chart",
             Screen::TeamBuilder => "Team Builder",
+            Screen::BattleSimulator => "⚔ Battle",
         }
     }
 
@@ -60,6 +66,7 @@ impl Screen {
             Screen::PokemonDetail => 1,
             Screen::TypeChart => 2,
             Screen::TeamBuilder => 3,
+            Screen::BattleSimulator => 4,
         }
     }
 }
@@ -115,6 +122,9 @@ pub struct App {
     pub available_moves: Vec<MoveDetail>,
     pub moves_loading: LoadingState,
 
+    // Battle simulator
+    pub battle: BattleState,
+
     pub error_message: Option<String>,
     tx: mpsc::UnboundedSender<AppEvent>,
 }
@@ -147,6 +157,7 @@ impl App {
             modal_search: String::new(),
             available_moves: Vec::new(),
             moves_loading: LoadingState::Idle,
+            battle: BattleState::default(),
             error_message: None,
             tx,
         }
@@ -183,6 +194,7 @@ impl App {
             modal_search: String::new(),
             available_moves: Vec::new(),
             moves_loading: LoadingState::Idle,
+            battle: BattleState::default(),
             error_message: None,
             tx,
         }
@@ -452,12 +464,15 @@ impl App {
                 self.on_screen_enter();
                 return;
             }
-            KeyCode::Char(c @ '1'..='4')
+            KeyCode::Char(c @ '1'..='5')
                 if !self.search_mode && self.screen != Screen::PokemonList =>
             {
                 let idx = (c as usize) - ('1' as usize);
-                self.screen = Screen::all()[idx];
-                self.on_screen_enter();
+                let screens = Screen::all();
+                if idx < screens.len() {
+                    self.screen = screens[idx];
+                    self.on_screen_enter();
+                }
                 return;
             }
             _ => {}
@@ -469,6 +484,7 @@ impl App {
             Screen::PokemonDetail => self.handle_detail_key(key),
             Screen::TypeChart => self.handle_type_chart_key(key),
             Screen::TeamBuilder => self.handle_team_key(key),
+            Screen::BattleSimulator => self.handle_battle_key(key),
         }
     }
 
@@ -486,6 +502,9 @@ impl App {
             }
             Screen::TypeChart => self.load_types(),
             Screen::TeamBuilder => {}
+            Screen::BattleSimulator => {
+                self.start_loading_list(); // need pokemon list for picker
+            }
         }
     }
 
@@ -712,6 +731,405 @@ impl App {
         }
     }
 
+    fn handle_battle_key(&mut self, key: KeyEvent) {
+        match self.battle.phase {
+            BattlePhase::SelectPokemon1 | BattlePhase::SelectPokemon2 => {
+                if self.battle.picker_search_mode {
+                    match key.code {
+                        KeyCode::Esc => self.battle.picker_search_mode = false,
+                        KeyCode::Enter => self.battle.picker_search_mode = false,
+                        KeyCode::Backspace => {
+                            self.battle.picker_search.pop();
+                            self.battle.picker_selected = 0;
+                        }
+                        KeyCode::Char(c) => {
+                            self.battle.picker_search.push(c);
+                            self.battle.picker_selected = 0;
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+
+                match key.code {
+                    KeyCode::Char('/') => {
+                        self.battle.picker_search_mode = true;
+                        self.battle.picker_search.clear();
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        if self.battle.picker_selected > 0 {
+                            self.battle.picker_selected -= 1;
+                        }
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        let max = self.battle_picker_list().len().saturating_sub(1);
+                        if self.battle.picker_selected < max {
+                            self.battle.picker_selected += 1;
+                        }
+                    }
+                    KeyCode::Esc => {
+                        self.battle.reset();
+                    }
+                    KeyCode::Enter => {
+                        let list = self.battle_picker_list();
+                        if let Some(p) = list.get(self.battle.picker_selected).cloned() {
+                            let bp = self.build_battle_pokemon(&p);
+                            if self.battle.phase == BattlePhase::SelectPokemon1 {
+                                self.battle.log.push(BattleLogEntry {
+                                    text: format!("Player chose {}!", bp.name),
+                                });
+                                self.battle.pokemon1 = Some(bp);
+                                self.battle.phase = BattlePhase::SelectPokemon2;
+                                self.battle.picker_selected = 0;
+                                self.battle.picker_search.clear();
+                                self.battle.log.push(BattleLogEntry {
+                                    text: "Now pick the opponent Pokémon!".into(),
+                                });
+                            } else {
+                                self.battle.log.push(BattleLogEntry {
+                                    text: format!("Opponent is {}!", bp.name),
+                                });
+                                self.battle.pokemon2 = Some(bp);
+                                self.battle.phase = BattlePhase::SelectMove;
+                                self.battle.selected_move = 0;
+                                self.battle.turn = 1;
+                                self.battle.log.push(BattleLogEntry {
+                                    text: "Battle start! Choose your move.".into(),
+                                });
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            BattlePhase::SelectMove => {
+                let move_count = self
+                    .battle
+                    .pokemon1
+                    .as_ref()
+                    .map(|p| p.moves.len())
+                    .unwrap_or(0);
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        if self.battle.selected_move > 0 {
+                            self.battle.selected_move -= 1;
+                        }
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if self.battle.selected_move < move_count.saturating_sub(1) {
+                            self.battle.selected_move += 1;
+                        }
+                    }
+                    KeyCode::Enter => {
+                        self.execute_battle_turn();
+                    }
+                    KeyCode::Esc => {
+                        self.battle.reset();
+                    }
+                    _ => {}
+                }
+            }
+            BattlePhase::Animating => {
+                // Tick the animation forward on any key
+                self.tick_battle_animation();
+            }
+            BattlePhase::Finished => {
+                match key.code {
+                    KeyCode::Enter | KeyCode::Char('r') => {
+                        self.battle.reset();
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// Get filtered pokemon list for battle picker (includes team members first)
+    pub fn battle_picker_list(&self) -> Vec<PokemonSummary> {
+        let search = self.battle.picker_search.to_lowercase();
+        let mut results: Vec<PokemonSummary> = Vec::new();
+
+        // Add team members first
+        let team = self.current_team();
+        for m in &team.members {
+            results.push(PokemonSummary {
+                id: m.pokemon_id,
+                name: format!("⭐ {}", m.pokemon_name),
+                types: m.types.clone(),
+            });
+        }
+
+        // Then all pokemon
+        for p in &self.pokemon_list {
+            results.push(p.clone());
+        }
+
+        if !search.is_empty() {
+            results.retain(|p| {
+                p.name.to_lowercase().contains(&search) || p.id.to_string().contains(&search)
+            });
+        }
+
+        results
+    }
+
+    fn build_battle_pokemon(&self, summary: &PokemonSummary) -> BattlePokemon {
+        let name = summary.name.replace("⭐ ", "");
+        let types = summary.types.clone();
+
+        // Try to get real stats from loaded detail
+        let (hp, atk, def, special, spd) =
+            if let Some(ref detail) = self.detail {
+                if detail.name == name {
+                    self.extract_stats(detail)
+                } else {
+                    self.default_stats_for_id(summary.id)
+                }
+            } else {
+                self.default_stats_for_id(summary.id)
+            };
+
+        // Check if team member has moves
+        let team = self.current_team();
+        let team_moves: Vec<BattleMove> = team
+            .members
+            .iter()
+            .find(|m| m.pokemon_name == name)
+            .map(|m| {
+                m.moves
+                    .iter()
+                    .filter_map(|tm| {
+                        Some(BattleMove {
+                            name: tm.name.clone(),
+                            move_type: tm.move_type.clone(),
+                            power: tm.power.unwrap_or(40),
+                            accuracy: 100,
+                            is_special: battle::is_special_type(&tm.move_type),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let moves = if team_moves.is_empty() {
+            battle::default_moves_for_types(&types)
+        } else {
+            team_moves
+        };
+
+        let level = 50;
+        // Gen 1 HP formula: ((Base*2 + IV + EV/4) * Level) / 100 + Level + 10
+        // Simplified: use base stat scaled
+        let max_hp = (hp * 2 * level) / 100 + level + 10;
+
+        BattlePokemon {
+            name,
+            types,
+            max_hp,
+            current_hp: max_hp,
+            attack: (atk * 2 * level) / 100 + 5,
+            defense: (def * 2 * level) / 100 + 5,
+            special: (special * 2 * level) / 100 + 5,
+            speed: (spd * 2 * level) / 100 + 5,
+            level,
+            moves,
+        }
+    }
+
+    fn extract_stats(&self, detail: &PokemonDetail) -> (u32, u32, u32, u32, u32) {
+        let get = |name: &str| -> u32 {
+            detail
+                .stats
+                .iter()
+                .find(|s| s.stat.name == name)
+                .map(|s| s.base_stat)
+                .unwrap_or(50)
+        };
+        let sp_atk = get("special-attack");
+        let sp_def = get("special-defense");
+        (
+            get("hp"),
+            get("attack"),
+            get("defense"),
+            (sp_atk + sp_def) / 2, // Gen 1 combined Special
+            get("speed"),
+        )
+    }
+
+    fn default_stats_for_id(&self, id: u32) -> (u32, u32, u32, u32, u32) {
+        // Reasonable defaults based on Pokemon ID ranges
+        match id {
+            1..=151 => (65, 65, 65, 65, 65),   // Gen 1 average
+            152..=251 => (70, 70, 70, 70, 70),  // Gen 2
+            _ => (75, 75, 75, 75, 75),
+        }
+    }
+
+    fn execute_battle_turn(&mut self) {
+        let p1 = self.battle.pokemon1.clone().unwrap();
+        let p2 = self.battle.pokemon2.clone().unwrap();
+        let p1_move_idx = self.battle.selected_move;
+        let p2_move_idx = battle::ai_pick_move(&p2, &p1);
+
+        self.battle.turn += 1;
+        self.battle.log.push(BattleLogEntry {
+            text: format!("── Turn {} ──", self.battle.turn - 1),
+        });
+
+        let first = battle::first_attacker(&p1, &p2);
+
+        let (a1, d1, m1_idx, a2, d2, m2_idx) = if first == 1 {
+            (&p1, &p2, p1_move_idx, &p2, &p1, p2_move_idx)
+        } else {
+            (&p2, &p1, p2_move_idx, &p1, &p2, p1_move_idx)
+        };
+
+        // First attack
+        if let Some(m) = a1.moves.get(m1_idx) {
+            let (dmg, eff) = battle::calculate_damage(a1, d1, m);
+            self.battle.log.push(BattleLogEntry {
+                text: format!("{} used {}!", a1.name, m.name),
+            });
+            if let Some(msg) = battle::effectiveness_message(eff) {
+                self.battle.log.push(BattleLogEntry {
+                    text: msg.to_string(),
+                });
+            }
+            self.battle.log.push(BattleLogEntry {
+                text: format!("It dealt {} damage!", dmg),
+            });
+
+            // Apply damage
+            if first == 1 {
+                let hp = &mut self.battle.pokemon2.as_mut().unwrap().current_hp;
+                *hp = hp.saturating_sub(dmg);
+            } else {
+                let hp = &mut self.battle.pokemon1.as_mut().unwrap().current_hp;
+                *hp = hp.saturating_sub(dmg);
+            }
+        }
+
+        // Check if defender fainted
+        let d1_hp = if first == 1 {
+            self.battle.pokemon2.as_ref().unwrap().current_hp
+        } else {
+            self.battle.pokemon1.as_ref().unwrap().current_hp
+        };
+
+        if d1_hp == 0 {
+            let winner = first;
+            let loser_name = d1.name.clone();
+            self.battle.log.push(BattleLogEntry {
+                text: format!("{} fainted!", loser_name),
+            });
+            self.battle.winner = Some(winner);
+            self.battle.phase = BattlePhase::Animating;
+            self.battle.anim_ticks_remaining = 6;
+            self.battle.anim_p1_target_hp = self.battle.pokemon1.as_ref().unwrap().current_hp;
+            self.battle.anim_p2_target_hp = self.battle.pokemon2.as_ref().unwrap().current_hp;
+            return;
+        }
+
+        // Second attack
+        if let Some(m) = a2.moves.get(m2_idx) {
+            let d2_current = if first == 1 {
+                // a2 is p2, defender is now p1 with its current HP
+                self.battle.pokemon1.as_ref().unwrap()
+            } else {
+                self.battle.pokemon2.as_ref().unwrap()
+            };
+            let (dmg, eff) = battle::calculate_damage(a2, d2_current, m);
+            self.battle.log.push(BattleLogEntry {
+                text: format!("{} used {}!", a2.name, m.name),
+            });
+            if let Some(msg) = battle::effectiveness_message(eff) {
+                self.battle.log.push(BattleLogEntry {
+                    text: msg.to_string(),
+                });
+            }
+            self.battle.log.push(BattleLogEntry {
+                text: format!("It dealt {} damage!", dmg),
+            });
+
+            if first == 1 {
+                let hp = &mut self.battle.pokemon1.as_mut().unwrap().current_hp;
+                *hp = hp.saturating_sub(dmg);
+            } else {
+                let hp = &mut self.battle.pokemon2.as_mut().unwrap().current_hp;
+                *hp = hp.saturating_sub(dmg);
+            }
+        }
+
+        // Check second faint
+        let d2_hp = if first == 1 {
+            self.battle.pokemon1.as_ref().unwrap().current_hp
+        } else {
+            self.battle.pokemon2.as_ref().unwrap().current_hp
+        };
+
+        if d2_hp == 0 {
+            let winner = if first == 1 { 2u8 } else { 1u8 };
+            let loser_name = d2.name.clone();
+            self.battle.log.push(BattleLogEntry {
+                text: format!("{} fainted!", loser_name),
+            });
+            self.battle.winner = Some(winner);
+            self.battle.phase = BattlePhase::Animating;
+            self.battle.anim_ticks_remaining = 6;
+        } else {
+            // Continue battle
+            self.battle.phase = BattlePhase::Animating;
+            self.battle.anim_ticks_remaining = 3;
+        }
+
+        self.battle.anim_p1_target_hp = self.battle.pokemon1.as_ref().unwrap().current_hp;
+        self.battle.anim_p2_target_hp = self.battle.pokemon2.as_ref().unwrap().current_hp;
+    }
+
+    fn tick_battle_animation(&mut self) {
+        if self.battle.anim_ticks_remaining > 0 {
+            self.battle.anim_ticks_remaining -= 1;
+            // Smoothly drain HP toward target
+            if let Some(ref mut p) = self.battle.pokemon1 {
+                if p.current_hp > self.battle.anim_p1_target_hp {
+                    let diff = p.current_hp - self.battle.anim_p1_target_hp;
+                    p.current_hp -= (diff / (self.battle.anim_ticks_remaining as u32 + 1)).max(1);
+                }
+            }
+            if let Some(ref mut p) = self.battle.pokemon2 {
+                if p.current_hp > self.battle.anim_p2_target_hp {
+                    let diff = p.current_hp - self.battle.anim_p2_target_hp;
+                    p.current_hp -= (diff / (self.battle.anim_ticks_remaining as u32 + 1)).max(1);
+                }
+            }
+        }
+
+        if self.battle.anim_ticks_remaining == 0 {
+            // Snap to target
+            if let Some(ref mut p) = self.battle.pokemon1 {
+                p.current_hp = self.battle.anim_p1_target_hp;
+            }
+            if let Some(ref mut p) = self.battle.pokemon2 {
+                p.current_hp = self.battle.anim_p2_target_hp;
+            }
+
+            if self.battle.winner.is_some() {
+                let winner_name = if self.battle.winner == Some(1) {
+                    self.battle.pokemon1.as_ref().unwrap().name.clone()
+                } else {
+                    self.battle.pokemon2.as_ref().unwrap().name.clone()
+                };
+                self.battle.log.push(BattleLogEntry {
+                    text: format!("🏆 {} wins the battle!", winner_name),
+                });
+                self.battle.phase = BattlePhase::Finished;
+            } else {
+                self.battle.phase = BattlePhase::SelectMove;
+                self.battle.selected_move = 0;
+            }
+        }
+    }
+
     fn handle_modal_key(&mut self, key: KeyEvent, modal: Modal) {
         if key.code == KeyCode::Esc {
             self.modal = None;
@@ -908,11 +1326,12 @@ mod tests {
     #[test]
     fn test_screen_all() {
         let screens = Screen::all();
-        assert_eq!(screens.len(), 4);
+        assert_eq!(screens.len(), 5);
         assert_eq!(screens[0], Screen::PokemonList);
         assert_eq!(screens[1], Screen::PokemonDetail);
         assert_eq!(screens[2], Screen::TypeChart);
         assert_eq!(screens[3], Screen::TeamBuilder);
+        assert_eq!(screens[4], Screen::BattleSimulator);
     }
 
     #[test]
@@ -921,6 +1340,7 @@ mod tests {
         assert_eq!(Screen::PokemonDetail.label(), "Detail");
         assert_eq!(Screen::TypeChart.label(), "Type Chart");
         assert_eq!(Screen::TeamBuilder.label(), "Team Builder");
+        assert_eq!(Screen::BattleSimulator.label(), "⚔ Battle");
     }
 
     #[test]
@@ -929,6 +1349,7 @@ mod tests {
         assert_eq!(Screen::PokemonDetail.index(), 1);
         assert_eq!(Screen::TypeChart.index(), 2);
         assert_eq!(Screen::TeamBuilder.index(), 3);
+        assert_eq!(Screen::BattleSimulator.index(), 4);
     }
 
     #[test]
