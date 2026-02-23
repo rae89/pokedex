@@ -1,7 +1,9 @@
 use anyhow::Result;
 
 use super::client::ApiClient;
-use crate::models::pokemon::{MoveDetail, PokemonDetail, PokemonListResponse};
+use crate::models::pokemon::{
+    EvolutionChain, MoveDetail, PokemonDetail, PokemonListResponse, PokemonSpecies,
+};
 use crate::models::type_data::TypeInfo;
 
 const BASE_URL: &str = "https://pokeapi.co/api/v2";
@@ -24,6 +26,16 @@ impl ApiClient {
 
     pub async fn fetch_move_detail(&self, name: &str) -> Result<MoveDetail> {
         let url = format!("{}/move/{}", BASE_URL, name);
+        self.get_cached(&url).await
+    }
+
+    pub async fn fetch_pokemon_species(&self, id_or_name: &str) -> Result<PokemonSpecies> {
+        let url = format!("{}/pokemon-species/{}", BASE_URL, id_or_name);
+        self.get_cached(&url).await
+    }
+
+    pub async fn fetch_evolution_chain(&self, id: u32) -> Result<EvolutionChain> {
+        let url = format!("{}/evolution-chain/{}", BASE_URL, id);
         self.get_cached(&url).await
     }
 
@@ -147,6 +159,104 @@ mod tests {
         assert_eq!(move_detail.id, 33);
         assert_eq!(move_detail.name, "tackle");
         assert_eq!(move_detail.power, Some(40));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_pokemon_species() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
+
+        // Pre-populate cache
+        let url = "https://pokeapi.co/api/v2/pokemon-species/1";
+        let cache_key = ApiClient::url_to_cache_key(url);
+        let cache_path = cache_dir.join(&cache_key);
+        let mock_response = r#"{
+            "id": 1,
+            "name": "bulbasaur",
+            "evolution_chain": {"url": "https://pokeapi.co/api/v2/evolution-chain/1/"}
+        }"#;
+        std::fs::write(&cache_path, mock_response).unwrap();
+
+        let result = client.fetch_pokemon_species("1").await;
+        assert!(result.is_ok());
+        let species = result.unwrap();
+        assert_eq!(species.id, 1);
+        assert_eq!(species.name, "bulbasaur");
+        assert!(species.evolution_chain.url.contains("evolution-chain/1"));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_pokemon_species_by_name() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
+
+        let url = "https://pokeapi.co/api/v2/pokemon-species/pikachu";
+        let cache_key = ApiClient::url_to_cache_key(url);
+        let cache_path = cache_dir.join(&cache_key);
+        let mock_response = r#"{
+            "id": 25,
+            "name": "pikachu",
+            "evolution_chain": {"url": "https://pokeapi.co/api/v2/evolution-chain/10/"}
+        }"#;
+        std::fs::write(&cache_path, mock_response).unwrap();
+
+        let result = client.fetch_pokemon_species("pikachu").await;
+        assert!(result.is_ok());
+        let species = result.unwrap();
+        assert_eq!(species.id, 25);
+        assert_eq!(species.name, "pikachu");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_evolution_chain() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().to_path_buf();
+        let client = ApiClient::new_with_cache_dir(cache_dir.clone());
+
+        let url = "https://pokeapi.co/api/v2/evolution-chain/1";
+        let cache_key = ApiClient::url_to_cache_key(url);
+        let cache_path = cache_dir.join(&cache_key);
+        let mock_response = r#"{
+            "id": 1,
+            "chain": {
+                "species": {"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon-species/1/"},
+                "evolution_details": [],
+                "evolves_to": [
+                    {
+                        "species": {"name": "ivysaur", "url": "https://pokeapi.co/api/v2/pokemon-species/2/"},
+                        "evolution_details": [
+                            {
+                                "trigger": {"name": "level-up", "url": ""},
+                                "min_level": 16,
+                                "item": null,
+                                "held_item": null,
+                                "min_happiness": null,
+                                "known_move": null,
+                                "location": null,
+                                "time_of_day": "",
+                                "trade_species": null
+                            }
+                        ],
+                        "evolves_to": []
+                    }
+                ]
+            }
+        }"#;
+        std::fs::write(&cache_path, mock_response).unwrap();
+
+        let result = client.fetch_evolution_chain(1).await;
+        assert!(result.is_ok());
+        let chain = result.unwrap();
+        assert_eq!(chain.id, 1);
+        assert_eq!(chain.chain.species.name, "bulbasaur");
+        assert_eq!(chain.chain.evolves_to.len(), 1);
+        assert_eq!(chain.chain.evolves_to[0].species.name, "ivysaur");
+        assert_eq!(
+            chain.chain.evolves_to[0].evolution_details[0].min_level,
+            Some(16)
+        );
     }
 
     #[tokio::test]
